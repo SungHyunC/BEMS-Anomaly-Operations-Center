@@ -296,8 +296,9 @@ h1, h2, h3, h4, h5 {{ color: var(--text); letter-spacing: -0.01em; }}
 /* --- chart card: wrap plotly charts in a clean panel --------------- */
 [data-testid="stPlotlyChart"] {{
   background: var(--surface); border: 1px solid var(--border);
-  border-radius: 10px; padding: 8px 10px 4px 10px;
+  border-radius: 12px; padding: 14px 16px 10px 16px;
   box-shadow: 0 1px 2px rgba(9,30,66,0.04);
+  margin-bottom: 20px;
 }}
 
 /* --- toggles & sliders accent -------------------------------------- */
@@ -494,7 +495,7 @@ def tab_operations(stats: dict, decisions: list[dict]) -> None:
     st.markdown("<br>", unsafe_allow_html=True)
 
     # Two-column: services table + decision timeline
-    left, right = st.columns([1, 1.2])
+    left, right = st.columns([1, 1.2], gap="large")
 
     with left:
         st.markdown("<div class='section-title'>System Services</div>", unsafe_allow_html=True)
@@ -641,7 +642,7 @@ def tab_operations(stats: dict, decisions: list[dict]) -> None:
     if not zones:
         st.info("No telemetry yet. Awaiting transmitter.")
         return
-    cols = st.columns(len(zones))
+    cols = st.columns(len(zones), gap="large")
     for col, (zone, zs) in zip(cols, zones.items()):
         loss_pct = zs.get("packet_loss_rate", 0.0) * 100
         loss_kind = "ok" if loss_pct < 8 else ("warn" if loss_pct < 18 else "crit")
@@ -765,13 +766,16 @@ def _sensor_chart(name: str, raw_df: pd.DataFrame, proc_df: pd.DataFrame,
 
     fig.update_layout(
         title={"text": f"<b>{name.title()}</b> <span style='color:{C_MUTED};font-weight:400;'>· {spec.unit}</span>",
-               "font": {"size": 13, "color": C_TEXT}, "x": 0.01, "y": 0.97},
+               "font": {"size": 14, "color": C_TEXT}, "x": 0.01, "y": 0.96},
         hovermode="x unified",
         hoverlabel={"bgcolor": "white", "bordercolor": C_BORDER, "font": {"size": 11}},
     )
     fig.update_yaxes(title_text="", range=[ymin, ymax])
     fig.update_xaxes(title_text="sequence")
-    return _style_axes(fig, height=300)
+    _style_axes(fig, height=320)
+    # extra headroom for the title and right room for the last-value badge
+    fig.update_layout(margin={"l": 54, "r": 46, "t": 46, "b": 38})
+    return fig
 
 
 def tab_telemetry(zones_seen: list[str]) -> None:
@@ -829,12 +833,33 @@ def tab_telemetry(zones_seen: list[str]) -> None:
         unsafe_allow_html=True,
     )
 
-    cols = st.columns(2)
-    for i, name in enumerate(SENSOR_NAMES):
-        with cols[i % 2]:
+    # layout control — let the user spread the charts out
+    per_row = st.radio(
+        "Charts per row", [1, 2], index=1, horizontal=True, key="tel_per_row",
+        help="Switch to 1 per row for full-width, easier-to-read charts.",
+    )
+    st.markdown("<div style='height:6px'></div>", unsafe_allow_html=True)
+
+    height = 360 if per_row == 1 else 320
+    if per_row == 1:
+        for name in SENSOR_NAMES:
             fig = _sensor_chart(name, raw_df, proc_df, show_raw=show_raw)
-            fig.update_layout(showlegend=False)  # shared legend above replaces per-chart
-            st.plotly_chart(fig, use_container_width=True, key=f"tel_{zone}_{name}")
+            fig.update_layout(showlegend=False)
+            st.plotly_chart(fig, use_container_width=True, key=f"tel_{zone}_{name}",
+                            config={"displayModeBar": False})
+    else:
+        for i in range(0, len(SENSOR_NAMES), 2):
+            cols = st.columns(2, gap="large")
+            for j, col in enumerate(cols):
+                if i + j >= len(SENSOR_NAMES):
+                    continue
+                name = SENSOR_NAMES[i + j]
+                with col:
+                    fig = _sensor_chart(name, raw_df, proc_df, show_raw=show_raw)
+                    fig.update_layout(showlegend=False, height=height)
+                    st.plotly_chart(fig, use_container_width=True,
+                                    key=f"tel_{zone}_{name}",
+                                    config={"displayModeBar": False})
 
 
 # ─────────────────────────────────────────────────── tab: Pipeline
@@ -1200,7 +1225,7 @@ def tab_metrics(zones_seen: list[str]) -> None:
         })
     df = pd.DataFrame(rows)
 
-    chart_col, table_col = st.columns([1.4, 1])
+    chart_col, table_col = st.columns([1.4, 1], gap="large")
 
     with chart_col:
         st.markdown("<div class='chart-label'>Precision · Recall · F1 by detector</div>",
