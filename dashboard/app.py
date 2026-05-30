@@ -91,6 +91,22 @@ I18N: dict[str, tuple[str, str]] = {
     "tab_alerts": ("Alerts", "알림"),
     "tab_scenario": ("Scenario Lab", "시나리오 랩"),
     "tab_metrics": ("Quality Metrics", "품질 지표"),
+    "tab_building": ("Building", "건물 뷰"),
+    # building view
+    "bld_title": ("Live Building View", "실시간 건물 뷰"),
+    "bld_sub": ("Real-time status of every zone — floors glow by severity, and a sensor dot "
+                "turns red the moment it breaches a limit.",
+                "존별 실시간 상태 — 층은 심각도에 따라 색이 바뀌고, 임계 위반 시 센서 점이 즉시 빨개집니다."),
+    "bld_rooftop": ("ROOFTOP · HVAC PLANT", "옥상 · HVAC 설비"),
+    "bld_floor": ("Floor", "층"),
+    "bld_legend": ("● sensor normal    ● sensor breached    ·    floor tint = zone severity",
+                   "● 센서 정상    ● 센서 위반    ·    층 색 = 존 심각도"),
+    "bld_demo": ("Live demo — inject a fault and watch the floor react",
+                 "라이브 데모 — 결함을 주입하면 해당 층이 반응합니다"),
+    "bld_scenario": ("Scenario", "시나리오"),
+    "bld_inject": ("Inject", "주입"),
+    "bld_no_data": ("No live data yet — start the transmitter or inject a sample.",
+                    "아직 실시간 데이터가 없습니다 — 송신기를 켜거나 샘플을 주입하세요."),
     # operations KPIs
     "kpi_zones": ("Active Zones", "활성 존"),
     "kpi_received": ("Packets Received", "수신 패킷"),
@@ -515,6 +531,58 @@ hr {{ margin: 0.6rem 0 !important; border-color: var(--border) !important; }}
 .chart-label {{
   font-size: 0.82rem; font-weight: 700; color: var(--text2);
   margin: 2px 0 6px 2px; display: flex; align-items: center; gap: 8px;
+}}
+
+/* --- building view ------------------------------------------------- */
+.bld-wrap {{ max-width: 940px; margin: 4px auto 0 auto; }}
+.bld-roof {{
+  height: 30px; border-radius: 12px 12px 0 0;
+  background: linear-gradient(180deg, #2b3a67, #1a2a5e);
+  border: 1px solid #1a2a5e; border-bottom: 0;
+  color: #cdd8f5; font-size: 0.72rem; font-weight: 700; letter-spacing: 0.14em;
+  display: flex; align-items: center; justify-content: center;
+}}
+.bld-ground {{
+  height: 16px; border-radius: 0 0 12px 12px;
+  border: 1px solid var(--border); border-top: 0;
+  background: repeating-linear-gradient(45deg,#cbd5e1,#cbd5e1 9px,#e2e8f0 9px,#e2e8f0 18px);
+}}
+.floor {{
+  display: flex; align-items: center; gap: 18px;
+  border: 1px solid var(--border); border-top: 0;
+  padding: 16px 20px; position: relative; overflow: hidden;
+}}
+.floor-left {{ width: 230px; flex: 0 0 230px; }}
+.floor-name {{ font-size: 1.25rem; font-weight: 800; color: var(--text); line-height: 1.1; }}
+.floor-fn {{ font-size: 0.78rem; color: var(--muted); margin: 3px 0 9px 0; }}
+.floor-sensors {{ display: flex; gap: 10px; flex: 1; flex-wrap: wrap; }}
+.schip {{
+  flex: 1; min-width: 120px; border: 1px solid var(--border); border-radius: 9px;
+  padding: 9px 13px; background: var(--surface);
+  display: flex; align-items: center; gap: 9px;
+}}
+.schip .dot {{ width: 10px; height: 10px; border-radius: 50%; flex: 0 0 auto; }}
+.schip.ok .dot  {{ background: #16a34a; }}
+.schip.bad .dot {{ background: #ef4444; box-shadow: 0 0 0 4px rgba(239,68,68,0.16); }}
+.schip .sname {{ font-size: 0.68rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; }}
+.schip .sval  {{ margin-left: auto; font-size: 1.1rem; font-weight: 800; color: var(--text); font-variant-numeric: tabular-nums; }}
+.schip .sunit {{ font-size: 0.72rem; color: var(--muted); font-weight: 600; margin-left: 3px; }}
+.schip.bad {{ border-color: #f3c4be; background: #fdeeec; }}
+.floor-diag {{ font-size: 0.78rem; color: #b91c1c; font-weight: 600; margin-top: 8px; }}
+@keyframes floorpulse {{
+  0%   {{ box-shadow: inset 0 0 0 0 rgba(239,68,68,0); }}
+  50%  {{ box-shadow: inset 0 0 60px 0 rgba(239,68,68,0.14); }}
+  100% {{ box-shadow: inset 0 0 0 0 rgba(239,68,68,0); }}
+}}
+.floor.crit {{ animation: floorpulse 1.7s ease-in-out infinite; }}
+.livedot {{
+  width: 9px; height: 9px; border-radius: 50%; background: #16a34a;
+  display: inline-block; margin-right: 7px; animation: livepulse 1.4s infinite;
+}}
+@keyframes livepulse {{
+  0%   {{ box-shadow: 0 0 0 0 rgba(22,163,74,0.5); }}
+  70%  {{ box-shadow: 0 0 0 9px rgba(22,163,74,0); }}
+  100% {{ box-shadow: 0 0 0 0 rgba(22,163,74,0); }}
 }}
 
 /* --- hide chrome --------------------------------------------------- */
@@ -1362,6 +1430,116 @@ def tab_metrics(zones_seen: list[str]) -> None:
         )
 
 
+# ─────────────────────────────────────────────────── tab: Building View
+# Preferred top→bottom stacking order (rooftop first). Falls back gracefully.
+_FLOOR_ORDER = ["Zone-B", "Zone-A", "Zone-C"]
+
+
+def _fmt_val(name: str, v) -> str:
+    if v is None or v == "":
+        return "—"
+    try:
+        f = float(v)
+    except (TypeError, ValueError):
+        return "—"
+    return f"{f:.0f}" if name in ("humidity", "co2") else f"{f:.1f}"
+
+
+def tab_building(zones_seen: list[str]) -> None:
+    st.markdown(
+        f"<div class='section-title'><span class='livedot'></span>{t('bld_title')}</div>",
+        unsafe_allow_html=True)
+    st.markdown(f"<div class='section-sub'>{t('bld_sub')}</div>", unsafe_allow_html=True)
+
+    if not zones_seen:
+        st.info(t("bld_no_data"))
+        return
+
+    order = [z for z in _FLOOR_ORDER if z in zones_seen] + \
+            [z for z in zones_seen if z not in _FLOOR_ORDER]
+    n = len(order)
+
+    floors_html = ""
+    for i, z in enumerate(order):
+        proc = _get("/processed", zone=z, last_n=120).get("records", [])
+        dec = _get("/decisions", zone=z, last_n=1).get("records", [])
+        sev = dec[0]["severity"] if dec else "Normal"
+        diag = dec[0].get("diagnosis", "") if dec else ""
+        row = proc[-1] if proc else {}
+
+        color = SEVERITY_COLOR.get(sev, C_OK)
+        tint = {"Normal": C_SURFACE, "Warning": "#fff8ec", "Critical": "#fdeeec"}.get(sev, C_SURFACE)
+        pulse = "crit" if sev == "Critical" else ""
+        kind = {"Critical": "crit", "Warning": "warn", "Normal": "ok"}.get(sev, "ok")
+
+        chips = ""
+        for name in SENSOR_NAMES:
+            spec = SENSORS[name]
+            bad = bool(row.get(f"{name}_anom"))
+            chips += (
+                f"<div class='schip {'bad' if bad else 'ok'}'>"
+                f"<span class='dot'></span>"
+                f"<span class='sname'>{name}</span>"
+                f"<span class='sval'>{_fmt_val(name, row.get(name))}"
+                f"<span class='sunit'>{spec.unit}</span></span></div>"
+            )
+
+        label = ZONES.get(z, {}).get("label", "")
+        diag_html = (f"<div class='floor-diag'>{diag}</div>"
+                     if (sev != "Normal" and diag) else "")
+        floors_html += (
+            f"<div class='floor {pulse}' style='border-left:6px solid {color}; background:{tint};'>"
+            f"<div class='floor-left'>"
+            f"<div class='floor-name'>{z}</div>"
+            f"<div class='floor-fn'>{label} · {t('bld_floor')} {n - i}</div>"
+            f"{_pill(kind, sev)}{diag_html}"
+            f"</div>"
+            f"<div class='floor-sensors'>{chips}</div>"
+            f"</div>"
+        )
+
+    st.markdown(
+        f"<div class='bld-wrap'>"
+        f"<div class='bld-roof'>▲ {t('bld_rooftop')}</div>"
+        f"{floors_html}"
+        f"<div class='bld-ground'></div>"
+        f"</div>",
+        unsafe_allow_html=True,
+    )
+    st.markdown(
+        f"<div style='max-width:940px; margin:10px auto 0 auto; font-size:0.78rem; "
+        f"color:{C_TEXT2}; display:flex; gap:6px; align-items:center;'>"
+        f"<span style='color:#16a34a;'>●</span> {('sensor normal' if _lang()=='en' else '센서 정상')}"
+        f"&nbsp;&nbsp;<span style='color:#ef4444;'>●</span> "
+        f"{('sensor breached' if _lang()=='en' else '센서 위반')}"
+        f"&nbsp;&nbsp;·&nbsp;&nbsp;{('floor tint = zone severity' if _lang()=='en' else '층 색 = 존 심각도')}"
+        f"</div>",
+        unsafe_allow_html=True,
+    )
+
+    # ── live demo controls: inject a fault and watch the floor react
+    st.markdown("<br>", unsafe_allow_html=True)
+    st.markdown(
+        f"<div style='max-width:940px; margin:0 auto; font-weight:700; color:{C_TEXT}; "
+        f"font-size:0.92rem;'>{t('bld_demo')}</div>",
+        unsafe_allow_html=True)
+    scen = (_get("/scenarios") or {}).get("scenarios", [])
+    scen_tags = [s["tag"] for s in scen] or ["fire_risk"]
+    cc = st.columns([1.2, 1.6, 1, 3])
+    z_sel = cc[0].selectbox(t("sel_zone"), order, key="bld_zone",
+                            label_visibility="collapsed")
+    s_sel = cc[1].selectbox(t("bld_scenario"), scen_tags, key="bld_scen",
+                            label_visibility="collapsed")
+    if cc[2].button(t("bld_inject"), key="bld_inject_btn", type="primary",
+                    use_container_width=True):
+        res = _post("/inject", json={"zone": z_sel, "scenario": s_sel,
+                                     "label_as_anomaly": True})
+        if res.get("ok"):
+            st.success(t("inject_success", tag=s_sel, zone=z_sel,
+                         seq=res.get("seq"),
+                         s=f"{PIPELINE.decision_worker_interval_s:.0f}"))
+
+
 # ─────────────────────────────────────────────────────────────── main
 def main() -> None:
     settings = _sidebar()
@@ -1374,15 +1552,16 @@ def main() -> None:
     _app_bar(stats)
 
     tabs = st.tabs([
-        t("tab_operations"), t("tab_telemetry"), t("tab_pipeline"),
-        t("tab_alerts"), t("tab_scenario"), t("tab_metrics"),
+        t("tab_building"), t("tab_operations"), t("tab_telemetry"),
+        t("tab_pipeline"), t("tab_alerts"), t("tab_scenario"), t("tab_metrics"),
     ])
-    with tabs[0]: tab_operations(stats, decisions)
-    with tabs[1]: tab_telemetry(zones_seen or ZONE_NAMES)
-    with tabs[2]: tab_pipeline(stats, decisions)
-    with tabs[3]: tab_alerts(decisions)
-    with tabs[4]: tab_scenario_lab(scenarios_resp, zones_seen)
-    with tabs[5]: tab_metrics(zones_seen or ZONE_NAMES)
+    with tabs[0]: tab_building(zones_seen or ZONE_NAMES)
+    with tabs[1]: tab_operations(stats, decisions)
+    with tabs[2]: tab_telemetry(zones_seen or ZONE_NAMES)
+    with tabs[3]: tab_pipeline(stats, decisions)
+    with tabs[4]: tab_alerts(decisions)
+    with tabs[5]: tab_scenario_lab(scenarios_resp, zones_seen)
+    with tabs[6]: tab_metrics(zones_seen or ZONE_NAMES)
 
     st.markdown(
         f"<div style='margin-top:20px; padding-top:14px; border-top:1px solid {C_BORDER}; "
