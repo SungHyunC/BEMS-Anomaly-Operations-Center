@@ -1,20 +1,9 @@
 """Stage 6 — Dashboard Agent (Enterprise Control Center).
 
-A dense, scannable operations console for the BEMS pipeline. Five sections,
-each opened by a left-side navigation:
+A dense, scannable operations console for the BEMS pipeline with six tabs:
+Operations · Telemetry · Pipeline · Alerts · Scenario Lab · Quality Metrics.
 
-  • Operations       — system health board: services, packet flow per zone,
-                       severity counters, decision throughput
-  • Telemetry        — per-zone time-series, raw vs interpolated, anomaly
-                       overlays, drop-list, sensor stats
-  • Pipeline         — explicit agent topology + per-agent status, KPIs and
-                       responsibilities
-  • Alerts           — filterable severity feed with diagnosis / action /
-                       evidence columns, exportable
-  • Scenario Lab     — controlled fault injection (preset library + custom
-                       values) for runbook validation
-  • Quality Metrics  — interpolation MAE and detection P/R/F1 per detector
-                       against ground-truth labels
+Bilingual UI — switch English / 한국어 from the sidebar.
 """
 from __future__ import annotations
 
@@ -70,6 +59,224 @@ PLOT = {
     "grid":        "#eaedf2",
     "axis":        "#a5adba",
 }
+
+
+# ════════════════════════════════════════════════════════ i18n / language
+# Each entry maps a key to (English, Korean). Brand names, severity words,
+# detector names and sensor names stay in English on purpose (standard terms).
+I18N: dict[str, tuple[str, str]] = {
+    # app bar
+    "appbar_sub": ("Smart Building Energy Management · 6-stage agent pipeline · {n} monitored zones",
+                   "스마트 빌딩 에너지 관리 · 6단계 에이전트 파이프라인 · {n}개 모니터링 존"),
+    "all_ok": ("All Systems OK", "전체 정상"),
+    "worker_error": ("Worker Error", "워커 오류"),
+    "decider_online": ("Decider Online", "결정 엔진 가동"),
+    "decider_idle": ("Decider Idle", "결정 엔진 대기"),
+    # sidebar
+    "console_sub": ("v2.0 · operations", "v2.0 · 운영"),
+    "lang_label": ("Language / 언어", "Language / 언어"),
+    "sec_refresh": ("Refresh", "새로고침"),
+    "auto_refresh": ("Auto-refresh", "자동 새로고침"),
+    "interval": ("Interval (s)", "주기 (초)"),
+    "refresh_on": ("Auto-refresh ON · every {s}s", "자동 새로고침 ON · {s}초마다"),
+    "refresh_off": ("Auto-refresh OFF · every {s}s", "자동 새로고침 OFF · {s}초마다"),
+    "sec_admin": ("Administration", "관리"),
+    "reset_btn": ("Reset operational store", "운영 데이터 초기화"),
+    "reset_done": ("Store wiped.", "데이터가 초기화되었습니다."),
+    "sec_thresholds": ("Sensor thresholds", "센서 임계값"),
+    # tabs
+    "tab_operations": ("Operations", "운영 현황"),
+    "tab_telemetry": ("Telemetry", "센서 데이터"),
+    "tab_pipeline": ("Pipeline", "파이프라인"),
+    "tab_alerts": ("Alerts", "알림"),
+    "tab_scenario": ("Scenario Lab", "시나리오 랩"),
+    "tab_metrics": ("Quality Metrics", "품질 지표"),
+    # operations KPIs
+    "kpi_zones": ("Active Zones", "활성 존"),
+    "kpi_received": ("Packets Received", "수신 패킷"),
+    "kpi_loss": ("Packet Loss", "패킷 손실"),
+    "kpi_decisions": ("Decisions Made", "생성된 결정"),
+    "kpi_critical": ("Critical Alerts", "Critical 알림"),
+    "kpi_warning": ("Warning Alerts", "Warning 알림"),
+    # operations — services
+    "sys_services": ("System Services", "시스템 서비스"),
+    "sys_services_sub": ("Health of the 6 pipeline stages", "6개 파이프라인 단계의 상태"),
+    "col_service": ("Service", "서비스"),
+    "col_description": ("Description", "설명"),
+    "col_status": ("Status", "상태"),
+    "st_operational": ("Operational", "정상"),
+    "st_idle": ("Idle", "대기"),
+    "st_error": ("Error", "오류"),
+    "worker_error_label": ("Worker error:", "워커 오류:"),
+    "svc_generator": ("synthetic BEMS sample stream", "BEMS 센서 샘플 생성 스트림"),
+    "svc_transmitter": ("network degradation + forwarding", "네트워크 열화 + 전달"),
+    "svc_ml": ("interpolate + Z-score + IForest", "보간 + Z-score + IForest"),
+    "svc_decision_rule": ("rule-based · last tick {t}", "룰 기반 · 마지막 실행 {t}"),
+    "svc_dashboard": ("this console", "이 콘솔"),
+    # decision timeline
+    "dt_title": ("Decision Timeline", "결정 타임라인"),
+    "dt_sub": ("Recent decisions across all zones — Critical/Warning highlighted",
+               "전체 존의 최근 결정 — Critical/Warning 강조 표시"),
+    "show_normal": ("Show Normal", "Normal 표시"),
+    "show_normal_help": ("Hide nominal events to make anomalies easier to spot.",
+                         "정상 이벤트를 숨겨 이상치를 더 잘 보이게 합니다."),
+    "awaiting_decision": ("Awaiting first decision from worker.", "워커의 첫 결정을 기다리는 중입니다."),
+    "window_last": ("window: last {n} decisions", "범위: 최근 {n}개 결정"),
+    "dt_caption": ("Critical = star, Warning = diamond, Normal = small dot. Click a legend item to isolate that severity.",
+                   "Critical은 별, Warning은 다이아몬드, Normal은 작은 점. 범례를 클릭하면 해당 심각도만 표시됩니다."),
+    # zone status
+    "zone_status": ("Zone Status", "존 현황"),
+    "zone_status_sub": ("Per-zone packet flow over the rolling window", "롤링 윈도우 기준 존별 패킷 흐름"),
+    "z_received": ("Received", "수신"),
+    "z_expected": ("Expected", "기대치"),
+    "z_missing": ("Missing", "손실"),
+    "z_seq_range": ("Seq range", "Seq 범위"),
+    "loss_suffix": ("{p}% loss", "{p}% 손실"),
+    "no_telemetry": ("No telemetry yet. Awaiting transmitter.", "아직 데이터가 없습니다. 송신기를 기다리는 중입니다."),
+    # telemetry
+    "sel_zone": ("Zone", "존"),
+    "tel_show_raw": ("Show raw points", "원시 데이터 표시"),
+    "tel_show_raw_help": ("Gray dots are the degraded readings before ML recovery.",
+                          "회색 점은 ML 복구 이전의 열화된 측정값입니다."),
+    "tel_raw_points": ("Raw points", "원시 포인트"),
+    "tel_recovered_rows": ("Recovered rows", "복구된 행"),
+    "tel_dropped": ("Packets dropped", "손실 패킷"),
+    "tel_flagged": ("Flagged anomalies", "탐지된 이상치"),
+    "no_telemetry_arrived": ("No telemetry has arrived yet.", "아직 도착한 데이터가 없습니다."),
+    "packet_loss_banner": ("<b>Packet loss detected</b> — {n} sequence(s) dropped; the ML Processor "
+                           "reconstructed them (shown as hollow diamonds). Recent gaps: ",
+                           "<b>패킷 손실 감지</b> — {n}개 시퀀스 손실; ML 프로세서가 복구했습니다 "
+                           "(속 빈 다이아몬드로 표시). 최근 손실 구간: "),
+    "charts_per_row": ("Charts per row", "행당 차트 수"),
+    "charts_per_row_help": ("Switch to 1 per row for full-width, easier-to-read charts.",
+                            "1로 바꾸면 차트가 전체 너비로 표시되어 보기 편합니다."),
+    "lk_signal": ("Recovered signal", "복구 신호"),
+    "lk_recovered": ("Reconstructed point", "복구된 포인트"),
+    "lk_zscore": ("Z-score / hard breach", "Z-score / 하드 임계 위반"),
+    "lk_iforest": ("IsolationForest", "IsolationForest"),
+    "lk_normal": ("Normal band", "정상 범위"),
+    "lk_danger": ("Danger zone", "위험 구역"),
+    # pipeline
+    "agent_topology": ("Agent Topology", "에이전트 구성도"),
+    "agent_topology_sub": ("Six independent agents communicating via REST. Each card lists the agent's "
+                           "responsibility, source file, and live KPIs.",
+                           "REST로 통신하는 6개의 독립 에이전트. 각 카드는 역할, 소스 파일, 실시간 지표를 보여줍니다."),
+    "source_label": ("Source", "소스"),
+    "kp_truth_rows": ("Truth rows", "Truth 행"),
+    "kp_cadence": ("Cadence", "주기"),
+    "kp_received": ("Received", "수신"),
+    "kp_dropped": ("Dropped", "손실"),
+    "kp_zones": ("Zones", "존"),
+    "kp_database": ("Database", "데이터베이스"),
+    "kp_window": ("Window", "윈도우"),
+    "kp_zthr": ("Z-threshold", "Z-임계값"),
+    "kp_decisions": ("Decisions", "결정"),
+    "kp_last_tick": ("Last tick", "마지막 실행"),
+    "kp_refresh": ("Refresh", "갱신"),
+    "kp_render": ("Render", "렌더"),
+    "win_rows": ("{n} rows", "{n}행"),
+    "render_live": ("live", "실시간"),
+    "role_generator": ("Multi-zone BEMS sample stream. Each tick emits one sample per zone with a "
+                       "daily-cycle baseline, Gaussian noise, and a ground-truth anomaly label.",
+                       "멀티존 BEMS 샘플 생성. 매 틱마다 존별로 일일 사이클 기준선 + 가우시안 노이즈 + "
+                       "ground-truth 이상 라벨이 붙은 샘플을 하나씩 생성합니다."),
+    "role_transmitter": ("Forwards every sample twice — clean copy to /truth (for evaluation), degraded "
+                         "copy (variable delay, 10% packet drop, EM noise) to /ingest.",
+                         "각 샘플을 두 번 전달 — 깨끗한 사본은 /truth(평가용), 열화된 사본(가변 지연, "
+                         "10% 패킷 손실, EM 노이즈)은 /ingest로 전송합니다."),
+    "role_collector": ("FastAPI service. Persists truth, readings, and decisions to SQLite (WAL). Hosts "
+                       "the background decision worker. Exposes raw, processed, decisions, stats, etc.",
+                       "FastAPI 서비스. truth·readings·decisions를 SQLite(WAL)에 영속화하고 백그라운드 "
+                       "결정 워커를 실행합니다. raw·processed·decisions·stats 등을 제공합니다."),
+    "role_ml": ("Per-zone reindex and linear interpolation of dropped sequences. Three detectors run in "
+                "parallel: robust Z-score (MAD), IsolationForest, and hard physical thresholds.",
+                "존별 reindex와 손실 시퀀스 선형 보간. 세 detector를 병렬 실행: robust Z-score(MAD), "
+                "IsolationForest, 하드 물리 임계값."),
+    "role_decision": ("Severity classification (Normal / Warning / Critical). A nine-rule engine matches "
+                      "the fired-sensor pattern to a known event and outputs an explainable diagnosis + action.",
+                      "심각도 분류(Normal / Warning / Critical). 9개 룰 엔진이 발화한 센서 패턴을 알려진 "
+                      "사고에 매칭하여 설명 가능한 진단과 조치를 출력합니다."),
+    "role_dashboard": ("This console. Polls the Collector and renders operations, telemetry, alerts, "
+                       "scenario lab, and quality-metrics surfaces.",
+                       "이 콘솔. 콜렉터를 폴링하여 운영·센서·알림·시나리오 랩·품질 지표 화면을 렌더링합니다."),
+    # alerts
+    "al_total": ("Total decisions", "전체 결정"),
+    "al_critical": ("Critical", "Critical"),
+    "al_warning": ("Warning", "Warning"),
+    "al_normal": ("Normal", "Normal"),
+    "f_severity": ("Severity", "심각도"),
+    "f_zone": ("Zone", "존"),
+    "f_max_rows": ("Max rows", "최대 행 수"),
+    "no_alerts": ("No alerts have been generated yet.", "아직 생성된 알림이 없습니다."),
+    "no_match": ("No alerts match the current filters.", "현재 필터에 해당하는 알림이 없습니다."),
+    "export_csv": ("Export filtered alerts (CSV)", "필터된 알림 내보내기 (CSV)"),
+    "rec_action": ("Recommended action:", "권고 조치:"),
+    "detector": ("Detector", "탐지기"),
+    # scenario lab
+    "ci_title": ("Controlled Fault Injection", "제어된 결함 주입"),
+    "ci_sub": ("Push synthetic samples into the pipeline to validate runbooks and detector response. "
+               "Injected samples are labelled as ground-truth anomalies so Quality Metrics can score them.",
+               "합성 샘플을 파이프라인에 주입하여 대응 절차와 탐지 성능을 검증합니다. 주입된 샘플은 "
+               "ground-truth 이상치로 표기되어 품질 지표에서 평가됩니다."),
+    "preset_scenarios": ("Preset scenarios", "프리셋 시나리오"),
+    "target_zone": ("Target zone", "대상 존"),
+    "inject_into": ("Inject into {zone}", "{zone}에 주입"),
+    "inject_success": ("Injected {tag} into {zone} at seq {seq}. The decision appears in the Alerts tab "
+                       "within {s}s.",
+                       "{tag}을(를) {zone}에 주입했습니다 (seq {seq}). 결정은 {s}초 내 Alerts 탭에 나타납니다."),
+    "custom_sample": ("Custom sample", "커스텀 샘플"),
+    "label_anomaly": ("Label as ground-truth anomaly", "ground-truth 이상치로 표기"),
+    "inject_custom": ("Inject custom sample", "커스텀 샘플 주입"),
+    "inject_custom_ok": ("Injected into {zone} at seq {seq}.", "{zone}에 주입했습니다 (seq {seq})."),
+    "recent_injections": ("Recent injections", "최근 주입 내역"),
+    "no_injections": ("No manual injections have been recorded yet.", "아직 수동 주입 기록이 없습니다."),
+    "col_time": ("Time", "시각"),
+    "col_zone": ("Zone", "존"),
+    "col_seq": ("Seq", "Seq"),
+    # quality metrics
+    "interp_quality": ("Interpolation Quality", "보간 품질"),
+    "interp_sub": ("Mean absolute error between recovered values and ground-truth. <b>Recovered-only</b> "
+                   "isolates the dropped sequences the ML Processor actually had to reconstruct.",
+                   "복구값과 ground-truth 간 평균 절대 오차(MAE). <b>복구 전용</b>은 ML 프로세서가 실제로 "
+                   "복원해야 했던 손실 시퀀스만 따로 측정합니다."),
+    "m_truth_rows": ("Truth rows", "Truth 행"),
+    "m_recovered_gaps": ("Recovered gaps", "복구된 구간"),
+    "m_avg_mae": ("Avg recovery MAE", "평균 복구 MAE"),
+    "col_sensor": ("Sensor", "센서"),
+    "col_mae_rec": ("MAE (recovered)", "MAE (복구분)"),
+    "col_mae_all": ("MAE (all rows)", "MAE (전체)"),
+    "col_rec_samples": ("Recovered samples", "복구 샘플 수"),
+    "not_enough_overlap": ("Not enough overlap between truth and readings yet.",
+                           "truth와 readings 간 겹치는 구간이 아직 부족합니다."),
+    "detection_perf": ("Anomaly Detection Performance", "이상 탐지 성능"),
+    "detection_sub": ("Precision / Recall / F1 of each detector against the ground-truth labels. "
+                      "<b>Union</b> combines all three.",
+                      "ground-truth 라벨 대비 각 detector의 정밀도/재현율/F1. <b>Union</b>은 셋을 결합합니다."),
+    "m_labelled": ("Labelled samples", "라벨된 샘플"),
+    "m_prevalence": ("Anomaly prevalence", "이상치 비율"),
+    "m_detectors": ("Detectors evaluated", "평가된 탐지기"),
+    "prf_label": ("Precision · Recall · F1 by detector", "탐지기별 정밀도 · 재현율 · F1"),
+    "confusion_counts": ("Confusion counts", "혼동 행렬 카운트"),
+    "best_f1": ("Best F1: <b>{d}</b> at <b>{f}</b> — <code>union</code> combines all three detectors' strengths.",
+                "최고 F1: <b>{d}</b> ({f}) — <code>union</code>은 세 탐지기의 장점을 결합합니다."),
+    "need_labelled": ("Need a few labelled samples before metrics are meaningful.",
+                      "지표가 유의미하려면 라벨된 샘플이 조금 더 필요합니다."),
+    "no_data_eval": ("No data to evaluate yet.", "아직 평가할 데이터가 없습니다."),
+    # footer
+    "footer_refresh": ("Last refresh {ts}", "마지막 갱신 {ts}"),
+}
+
+
+def _lang() -> str:
+    return st.session_state.get("lang", "en")
+
+
+def t(key: str, **kwargs) -> str:
+    pair = I18N.get(key)
+    if not pair:
+        return key
+    s = pair[1] if _lang() == "ko" else pair[0]
+    return s.format(**kwargs) if kwargs else s
 
 
 CSS = f"""
@@ -301,9 +508,6 @@ h1, h2, h3, h4, h5 {{ color: var(--text); letter-spacing: -0.01em; }}
   margin-bottom: 20px;
 }}
 
-/* --- toggles & sliders accent -------------------------------------- */
-[data-baseweb="checkbox"] [aria-checked="true"] {{ background: var(--primary) !important; }}
-
 /* --- section divider rhythm ---------------------------------------- */
 hr {{ margin: 0.6rem 0 !important; border-color: var(--border) !important; }}
 
@@ -312,7 +516,6 @@ hr {{ margin: 0.6rem 0 !important; border-color: var(--border) !important; }}
   font-size: 0.82rem; font-weight: 700; color: var(--text2);
   margin: 2px 0 6px 2px; display: flex; align-items: center; gap: 8px;
 }}
-.chart-label .dot {{ width: 8px; height: 8px; border-radius: 2px; display:inline-block; }}
 
 /* --- hide chrome --------------------------------------------------- */
 footer {{ visibility: hidden; }}
@@ -356,9 +559,9 @@ def _app_bar(stats: dict) -> None:
     running = worker.get("running")
     n_zones = len(stats.get("zones", {})) or len(ZONE_NAMES)
     decider_pill = _pill("ok" if running else "muted",
-                         "Decider Online" if running else "Decider Idle")
+                         t("decider_online") if running else t("decider_idle"))
     err = worker.get("last_error")
-    error_pill = _pill("crit", "Worker Error") if err else _pill("ok", "All Systems OK")
+    error_pill = _pill("crit", t("worker_error")) if err else _pill("ok", t("all_ok"))
     st.markdown(
         f"""
         <div class='appbar'>
@@ -366,7 +569,7 @@ def _app_bar(stats: dict) -> None:
             <div class='appbar-logo'>◆</div>
             <div>
               <div class='appbar-title'>BEMS · Anomaly Operations Center</div>
-              <div class='appbar-sub'>Smart Building Energy Management · 6-stage agent pipeline · {n_zones} monitored zones</div>
+              <div class='appbar-sub'>{t('appbar_sub', n=n_zones)}</div>
             </div>
           </div>
           <div class='appbar-status'>
@@ -383,34 +586,43 @@ def _sidebar() -> dict:
     st.sidebar.markdown(
         f"<div style='padding:8px 4px 14px 4px; border-bottom:1px solid {C_BORDER};'>"
         f"<div style='font-size:1.05rem; font-weight:800; color:{C_TEXT}; letter-spacing:-0.01em;'>BEMS Console</div>"
-        f"<div style='font-size:0.76rem; color:{C_MUTED}; margin-top:2px;'>v2.0 · operations</div>"
+        f"<div style='font-size:0.76rem; color:{C_MUTED}; margin-top:2px;'>{t('console_sub')}</div>"
         f"</div>",
         unsafe_allow_html=True,
     )
 
-    st.sidebar.markdown(
-        f"<div style='font-size:0.72rem; color:{C_MUTED}; text-transform:uppercase; "
-        f"letter-spacing:0.06em; font-weight:600; margin:14px 0 6px 0;'>Refresh</div>",
-        unsafe_allow_html=True,
+    # language selector — sets st.session_state['lang'] for the whole run
+    lang_choice = st.sidebar.radio(
+        t("lang_label"), ["English", "한국어"],
+        index=0 if _lang() == "en" else 1,
+        horizontal=True, key="lang_radio",
     )
-    auto = st.sidebar.toggle("Auto-refresh", value=True, label_visibility="collapsed")
-    refresh = st.sidebar.slider("Interval (s)", 2.0, 15.0, 4.0, 0.5,
-                                label_visibility="collapsed")
-    st.sidebar.caption(f"{'Auto-refresh ON' if auto else 'Auto-refresh OFF'} · every {refresh:.1f}s")
+    st.session_state["lang"] = "ko" if lang_choice == "한국어" else "en"
 
     st.sidebar.markdown(
         f"<div style='font-size:0.72rem; color:{C_MUTED}; text-transform:uppercase; "
-        f"letter-spacing:0.06em; font-weight:600; margin:18px 0 6px 0;'>Administration</div>",
+        f"letter-spacing:0.06em; font-weight:600; margin:14px 0 6px 0;'>{t('sec_refresh')}</div>",
         unsafe_allow_html=True,
     )
-    if st.sidebar.button("Reset operational store", use_container_width=True):
+    auto = st.sidebar.toggle(t("auto_refresh"), value=True, label_visibility="collapsed")
+    refresh = st.sidebar.slider(t("interval"), 2.0, 15.0, 4.0, 0.5,
+                                label_visibility="collapsed")
+    st.sidebar.caption(t("refresh_on", s=f"{refresh:.1f}") if auto
+                       else t("refresh_off", s=f"{refresh:.1f}"))
+
+    st.sidebar.markdown(
+        f"<div style='font-size:0.72rem; color:{C_MUTED}; text-transform:uppercase; "
+        f"letter-spacing:0.06em; font-weight:600; margin:18px 0 6px 0;'>{t('sec_admin')}</div>",
+        unsafe_allow_html=True,
+    )
+    if st.sidebar.button(t("reset_btn"), use_container_width=True):
         _post("/reset")
-        st.sidebar.success("Store wiped.")
+        st.sidebar.success(t("reset_done"))
         time.sleep(0.4)
 
     st.sidebar.markdown(
         f"<div style='font-size:0.72rem; color:{C_MUTED}; text-transform:uppercase; "
-        f"letter-spacing:0.06em; font-weight:600; margin:18px 0 6px 0;'>Sensor thresholds</div>",
+        f"letter-spacing:0.06em; font-weight:600; margin:18px 0 6px 0;'>{t('sec_thresholds')}</div>",
         unsafe_allow_html=True,
     )
     for spec in SENSORS.values():
@@ -456,8 +668,7 @@ def _style_axes(fig: go.Figure, height: int = 300) -> go.Figure:
 
 
 def _yrange(values, spec, pad_frac: float = 0.14):
-    """Compute a padded y-range that always includes the sensor's thresholds,
-    so the shaded danger/normal bands render cleanly."""
+    """Padded y-range that always includes the sensor's thresholds."""
     import numpy as np
     vals = [float(v) for v in values
             if v is not None and not (isinstance(v, float) and np.isnan(v))]
@@ -477,7 +688,6 @@ def tab_operations(stats: dict, decisions: list[dict]) -> None:
     zones = stats.get("zones", {}) or {}
     worker = stats.get("worker") or {}
 
-    # KPI strip
     crit = sum(1 for d in decisions if d.get("severity") == "Critical")
     warn = sum(1 for d in decisions if d.get("severity") == "Warning")
     total_received = sum(z.get("received", 0) for z in zones.values())
@@ -485,42 +695,42 @@ def tab_operations(stats: dict, decisions: list[dict]) -> None:
     avg_loss = (total_missing / max(sum(z.get("expected", 0) for z in zones.values()), 1)) * 100
 
     k = st.columns(6)
-    k[0].metric("Active Zones", len(zones))
-    k[1].metric("Packets Received", f"{total_received:,}")
-    k[2].metric("Packet Loss", f"{avg_loss:.1f}%")
-    k[3].metric("Decisions Made", worker.get("decisions_made", 0))
-    k[4].metric("Critical Alerts", crit)
-    k[5].metric("Warning Alerts", warn)
+    k[0].metric(t("kpi_zones"), len(zones))
+    k[1].metric(t("kpi_received"), f"{total_received:,}")
+    k[2].metric(t("kpi_loss"), f"{avg_loss:.1f}%")
+    k[3].metric(t("kpi_decisions"), worker.get("decisions_made", 0))
+    k[4].metric(t("kpi_critical"), crit)
+    k[5].metric(t("kpi_warning"), warn)
 
     st.markdown("<br>", unsafe_allow_html=True)
-
-    # Two-column: services table + decision timeline
     left, right = st.columns([1, 1.2], gap="large")
 
     with left:
-        st.markdown("<div class='section-title'>System Services</div>", unsafe_allow_html=True)
-        st.markdown("<div class='section-sub'>Health of the 6 pipeline stages</div>", unsafe_allow_html=True)
+        st.markdown(f"<div class='section-title'>{t('sys_services')}</div>", unsafe_allow_html=True)
+        st.markdown(f"<div class='section-sub'>{t('sys_services_sub')}</div>", unsafe_allow_html=True)
         last_tick = worker.get("last_tick")
         last_tick_str = (datetime.fromtimestamp(last_tick).strftime("%H:%M:%S")
                          if last_tick else "—")
         services = [
-            ("Generator",    "synthetic BEMS sample stream",       "ok"   if stats.get("total_truth", 0) > 0 else "muted"),
-            ("Transmitter",  "network degradation + forwarding",   "ok"   if total_received > 0 else "muted"),
+            ("Generator",    t("svc_generator"),   "ok" if stats.get("total_truth", 0) > 0 else "muted"),
+            ("Transmitter",  t("svc_transmitter"), "ok" if total_received > 0 else "muted"),
             ("Collector",    f"FastAPI · {PIPELINE.collector_url}", "ok"),
-            ("ML Processor", f"interpolate + Z-score + IForest",   "ok"   if worker.get("decisions_made", 0) > 0 else "muted"),
-            ("Decision",     f"rule-based · last tick {last_tick_str}",
+            ("ML Processor", t("svc_ml"),          "ok" if worker.get("decisions_made", 0) > 0 else "muted"),
+            ("Decision",     t("svc_decision_rule", t=last_tick_str),
                              "crit" if worker.get("last_error") else
-                             ("ok"  if worker.get("running") else "muted")),
-            ("Dashboard",    "this console",                       "ok"),
+                             ("ok" if worker.get("running") else "muted")),
+            ("Dashboard",    t("svc_dashboard"),   "ok"),
         ]
+        status_label = {"ok": t("st_operational"), "muted": t("st_idle"), "crit": t("st_error")}
         rows_html = "".join(
             f"<tr><td><b>{n}</b></td><td><code>{d}</code></td>"
-            f"<td style='text-align:right;'>{_pill(s, 'Operational' if s=='ok' else ('Idle' if s=='muted' else 'Error'))}</td></tr>"
+            f"<td style='text-align:right;'>{_pill(s, status_label[s])}</td></tr>"
             for n, d, s in services
         )
         st.markdown(
             f"<table class='svc-table'>"
-            f"<thead><tr><th>Service</th><th>Description</th><th style='text-align:right;'>Status</th></tr></thead>"
+            f"<thead><tr><th>{t('col_service')}</th><th>{t('col_description')}</th>"
+            f"<th style='text-align:right;'>{t('col_status')}</th></tr></thead>"
             f"<tbody>{rows_html}</tbody></table>",
             unsafe_allow_html=True,
         )
@@ -528,31 +738,26 @@ def tab_operations(stats: dict, decisions: list[dict]) -> None:
             st.markdown(
                 f"<div style='margin-top:10px; padding:10px 14px; background:{C_CRIT_BG}; "
                 f"border:1px solid #f3c4be; border-radius:6px; color:{C_CRIT}; font-size:0.85rem;'>"
-                f"<b>Worker error:</b> {worker['last_error']}</div>",
+                f"<b>{t('worker_error_label')}</b> {worker['last_error']}</div>",
                 unsafe_allow_html=True,
             )
 
     with right:
-        # header row with title + toggle
         hdr_l, hdr_r = st.columns([3, 1])
         with hdr_l:
-            st.markdown("<div class='section-title'>Decision Timeline</div>", unsafe_allow_html=True)
-            st.markdown("<div class='section-sub'>Recent decisions across all zones — Critical/Warning highlighted</div>",
-                        unsafe_allow_html=True)
+            st.markdown(f"<div class='section-title'>{t('dt_title')}</div>", unsafe_allow_html=True)
+            st.markdown(f"<div class='section-sub'>{t('dt_sub')}</div>", unsafe_allow_html=True)
         with hdr_r:
-            show_normal = st.toggle(
-                "Show Normal", value=False, key="ops_show_normal",
-                help="Hide nominal events to make anomalies easier to spot.",
-            )
+            show_normal = st.toggle(t("show_normal"), value=False, key="ops_show_normal",
+                                    help=t("show_normal_help"))
 
         if not decisions:
-            st.info("Awaiting first decision from worker.")
+            st.info(t("awaiting_decision"))
         else:
             df = pd.DataFrame(decisions)
             df["time"] = pd.to_datetime(df["decided_at"], unit="s")
             df = df.head(200)
 
-            # severity counts in the window — shown as chips above the chart
             n_crit = int((df["severity"] == "Critical").sum())
             n_warn = int((df["severity"] == "Warning").sum())
             n_norm = int((df["severity"] == "Normal").sum())
@@ -561,23 +766,17 @@ def tab_operations(stats: dict, decisions: list[dict]) -> None:
                 f"{_pill('crit', f'{n_crit} CRITICAL')}"
                 f"{_pill('warn', f'{n_warn} WARNING')}"
                 f"{_pill('ok',   f'{n_norm} NORMAL')}"
-                f"<span style='color:{C_MUTED}; font-size:0.8rem;'>"
-                f"window: last {len(df)} decisions</span>"
+                f"<span style='color:{C_MUTED}; font-size:0.8rem;'>{t('window_last', n=len(df))}</span>"
                 f"</div>",
                 unsafe_allow_html=True,
             )
 
             fig = go.Figure()
             zones_order = sorted(df["zone"].unique())
-
-            # layer ordering: Normal (faint dots) → Warning (mid) → Critical (top, biggest)
             layers = [
-                ("Normal",   {"size": 6,  "opacity": 0.30, "symbol": "circle",
-                              "line": {"width": 0}}),
-                ("Warning",  {"size": 14, "opacity": 0.95, "symbol": "diamond",
-                              "line": {"width": 1.5, "color": "white"}}),
-                ("Critical", {"size": 18, "opacity": 1.00, "symbol": "star",
-                              "line": {"width": 1.8, "color": "#5a1610"}}),
+                ("Normal",   {"size": 6,  "opacity": 0.30, "symbol": "circle", "line": {"width": 0}}),
+                ("Warning",  {"size": 14, "opacity": 0.95, "symbol": "diamond", "line": {"width": 1.5, "color": "white"}}),
+                ("Critical", {"size": 18, "opacity": 1.00, "symbol": "star", "line": {"width": 1.8, "color": "#5a1610"}}),
             ]
             for sev, marker in layers:
                 if sev == "Normal" and not show_normal:
@@ -600,47 +799,26 @@ def tab_operations(stats: dict, decisions: list[dict]) -> None:
 
             _style_axes(fig, height=320)
             fig.update_layout(
-                yaxis={
-                    "title": "",
-                    "categoryorder": "array",
-                    "categoryarray": zones_order[::-1],
-                    "tickfont": {"size": 12, "color": C_TEXT},
-                    "showgrid": False,
-                },
-                xaxis={
-                    "title": "",
-                    "tickformat": "%H:%M:%S",
-                    "showgrid": True, "gridcolor": "#f1f3f5",
-                },
-                legend={
-                    "orientation": "h", "y": 1.10, "x": 0,
-                    "bgcolor": "rgba(0,0,0,0)", "font": {"size": 11, "color": C_TEXT},
-                    "itemclick": "toggleothers",
-                },
+                yaxis={"title": "", "categoryorder": "array",
+                       "categoryarray": zones_order[::-1],
+                       "tickfont": {"size": 12, "color": C_TEXT}, "showgrid": False},
+                xaxis={"title": "", "tickformat": "%H:%M:%S",
+                       "showgrid": True, "gridcolor": "#f1f3f5"},
+                legend={"orientation": "h", "y": 1.10, "x": 0, "bgcolor": "rgba(0,0,0,0)",
+                        "font": {"size": 11, "color": C_TEXT}, "itemclick": "toggleothers"},
                 margin={"l": 70, "r": 20, "t": 50, "b": 30},
                 hoverlabel={"bgcolor": "white", "bordercolor": C_BORDER,
                             "font": {"color": C_TEXT, "size": 12}},
             )
-
-            # faint swimlane separators between zones
             for i in range(len(zones_order) - 1):
-                fig.add_hline(
-                    y=i + 0.5, line={"color": "#f1f3f5", "width": 1},
-                    layer="below",
-                )
+                fig.add_hline(y=i + 0.5, line={"color": "#f1f3f5", "width": 1}, layer="below")
+            st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+            st.caption(t("dt_caption"))
 
-            st.plotly_chart(fig, use_container_width=True)
-            st.caption(
-                "Critical은 별 모양, Warning은 다이아몬드, Normal은 작은 점. "
-                "범례를 클릭하면 해당 severity만 표시됩니다."
-            )
-
-    # Zone status cards
-    st.markdown("<br><div class='section-title'>Zone Status</div>", unsafe_allow_html=True)
-    st.markdown("<div class='section-sub'>Per-zone packet flow over the rolling window</div>",
-                unsafe_allow_html=True)
+    st.markdown(f"<br><div class='section-title'>{t('zone_status')}</div>", unsafe_allow_html=True)
+    st.markdown(f"<div class='section-sub'>{t('zone_status_sub')}</div>", unsafe_allow_html=True)
     if not zones:
-        st.info("No telemetry yet. Awaiting transmitter.")
+        st.info(t("no_telemetry"))
         return
     cols = st.columns(len(zones), gap="large")
     for col, (zone, zs) in zip(cols, zones.items()):
@@ -656,12 +834,12 @@ def tab_operations(stats: dict, decisions: list[dict]) -> None:
                       <div class='card-title'>{zone}</div>
                       <div class='card-sub'>{label}</div>
                     </div>
-                    {_pill(loss_kind, f'{loss_pct:.1f}% loss')}
+                    {_pill(loss_kind, t('loss_suffix', p=f'{loss_pct:.1f}'))}
                   </div>
-                  <div class='card-row'><span class='k'>Received</span>     <span class='v'>{zs.get('received',0):,}</span></div>
-                  <div class='card-row'><span class='k'>Expected</span>     <span class='v'>{zs.get('expected',0):,}</span></div>
-                  <div class='card-row'><span class='k'>Missing</span>      <span class='v'>{zs.get('missing',0):,}</span></div>
-                  <div class='card-row'><span class='k'>Seq range</span>    <span class='v'>{zs.get('first_seq')} → {zs.get('last_seq')}</span></div>
+                  <div class='card-row'><span class='k'>{t('z_received')}</span> <span class='v'>{zs.get('received',0):,}</span></div>
+                  <div class='card-row'><span class='k'>{t('z_expected')}</span> <span class='v'>{zs.get('expected',0):,}</span></div>
+                  <div class='card-row'><span class='k'>{t('z_missing')}</span>  <span class='v'>{zs.get('missing',0):,}</span></div>
+                  <div class='card-row'><span class='k'>{t('z_seq_range')}</span><span class='v'>{zs.get('first_seq')} → {zs.get('last_seq')}</span></div>
                 </div>
                 """,
                 unsafe_allow_html=True,
@@ -674,7 +852,6 @@ def _sensor_chart(name: str, raw_df: pd.DataFrame, proc_df: pd.DataFrame,
     spec = SENSORS[name]
     fig = go.Figure()
 
-    # compute a padded y-range so the shaded bands fill the panel cleanly
     all_vals = []
     if not proc_df.empty:
         all_vals += proc_df[name].tolist()
@@ -682,7 +859,6 @@ def _sensor_chart(name: str, raw_df: pd.DataFrame, proc_df: pd.DataFrame,
         all_vals += raw_df[name].tolist()
     ymin, ymax = _yrange(all_vals, spec)
 
-    # shaded zones: red (danger) outside, green (normal) inside — instant read
     if spec.anomaly_high is not None:
         fig.add_hrect(y0=spec.anomaly_high, y1=ymax, fillcolor=C_CRIT,
                       opacity=0.05, line_width=0, layer="below")
@@ -691,18 +867,14 @@ def _sensor_chart(name: str, raw_df: pd.DataFrame, proc_df: pd.DataFrame,
                       opacity=0.05, line_width=0, layer="below")
     fig.add_hrect(y0=spec.normal_min, y1=spec.normal_max, fillcolor=PLOT["normal_band"],
                   opacity=0.08, line_width=0, layer="below",
-                  annotation_text="normal", annotation_position="top left",
+                  annotation_text=t("lk_normal"), annotation_position="top left",
                   annotation_font={"size": 9, "color": C_OK})
 
-    # threshold guide lines
     if spec.anomaly_high is not None:
-        fig.add_hline(y=spec.anomaly_high, line_dash="dot",
-                      line_color=C_CRIT, line_width=1, opacity=0.6)
+        fig.add_hline(y=spec.anomaly_high, line_dash="dot", line_color=C_CRIT, line_width=1, opacity=0.6)
     if spec.anomaly_low is not None:
-        fig.add_hline(y=spec.anomaly_low, line_dash="dot",
-                      line_color=C_CRIT, line_width=1, opacity=0.6)
+        fig.add_hline(y=spec.anomaly_low, line_dash="dot", line_color=C_CRIT, line_width=1, opacity=0.6)
 
-    # raw degraded readings (optional)
     if show_raw and not raw_df.empty and name in raw_df.columns:
         fig.add_trace(go.Scatter(
             x=raw_df["seq"], y=raw_df[name], mode="markers", name="Raw",
@@ -711,30 +883,25 @@ def _sensor_chart(name: str, raw_df: pd.DataFrame, proc_df: pd.DataFrame,
         ))
 
     if not proc_df.empty:
-        # subtle area fill under the recovered line for visual weight
         fig.add_trace(go.Scatter(
-            x=proc_df["seq"], y=proc_df[name], mode="lines",
-            name="Recovered signal", line={"color": PLOT["interp"], "width": 2.4,
-                                           "shape": "spline"},
+            x=proc_df["seq"], y=proc_df[name], mode="lines", name=t("lk_signal"),
+            line={"color": PLOT["interp"], "width": 2.4, "shape": "spline"},
             fill="tozeroy", fillcolor="rgba(31,93,222,0.06)",
             hovertemplate="seq %{x} · %{y:.2f}" + spec.unit + "<extra></extra>",
         ))
-
-        # points the ML Processor actually reconstructed (was dropped in transit)
         if "was_missing" in proc_df.columns:
             rec = proc_df[proc_df["was_missing"] == True]   # noqa: E712
             if not rec.empty:
                 fig.add_trace(go.Scatter(
-                    x=rec["seq"], y=rec[name], mode="markers", name="Recovered point",
+                    x=rec["seq"], y=rec[name], mode="markers", name=t("lk_recovered"),
                     marker={"color": "white", "size": 8, "symbol": "diamond",
                             "line": {"width": 1.6, "color": PLOT["interp"]}},
-                    hovertemplate="seq %{x} · interpolated %{y:.2f}" + spec.unit + "<extra></extra>",
+                    hovertemplate="seq %{x} · interp %{y:.2f}" + spec.unit + "<extra></extra>",
                 ))
-
         z_an = proc_df[proc_df[f"{name}_anom"] == True]   # noqa: E712
         if not z_an.empty:
             fig.add_trace(go.Scatter(
-                x=z_an["seq"], y=z_an[name], mode="markers", name="Z-score / Hard",
+                x=z_an["seq"], y=z_an[name], mode="markers", name=t("lk_zscore"),
                 marker={"color": C_CRIT, "size": 11, "symbol": "x",
                         "line": {"width": 2.2, "color": C_CRIT}},
                 hovertemplate="seq %{x} · ANOMALY %{y:.2f}" + spec.unit + "<extra></extra>",
@@ -742,13 +909,11 @@ def _sensor_chart(name: str, raw_df: pd.DataFrame, proc_df: pd.DataFrame,
         if_an = proc_df[proc_df["iforest_anom"] == True]  # noqa: E712
         if not if_an.empty:
             fig.add_trace(go.Scatter(
-                x=if_an["seq"], y=if_an[name], mode="markers", name="IsolationForest",
+                x=if_an["seq"], y=if_an[name], mode="markers", name=t("lk_iforest"),
                 marker={"color": C_ACCENT, "size": 12, "symbol": "circle-open",
                         "line": {"width": 2.2}},
                 hovertemplate="seq %{x} · IForest %{y:.2f}" + spec.unit + "<extra></extra>",
             ))
-
-        # last value badge — colored by whether the latest reading is anomalous
         last = proc_df.iloc[-1]
         last_anom = bool(last.get(f"{name}_anom") or last.get("iforest_anom"))
         dot_color = C_CRIT if last_anom else C_OK
@@ -759,7 +924,7 @@ def _sensor_chart(name: str, raw_df: pd.DataFrame, proc_df: pd.DataFrame,
         ))
         fig.add_annotation(
             x=last["seq"], y=last[name], text=f"<b>{last[name]:.1f}</b>",
-            showarrow=False, xanchor="left", xshift=10, yshift=0,
+            showarrow=False, xanchor="left", xshift=10,
             font={"size": 11, "color": dot_color}, bgcolor="white",
             bordercolor=dot_color, borderwidth=1, borderpad=2,
         )
@@ -773,78 +938,69 @@ def _sensor_chart(name: str, raw_df: pd.DataFrame, proc_df: pd.DataFrame,
     fig.update_yaxes(title_text="", range=[ymin, ymax])
     fig.update_xaxes(title_text="sequence")
     _style_axes(fig, height=320)
-    # extra headroom for the title and right room for the last-value badge
     fig.update_layout(margin={"l": 54, "r": 46, "t": 46, "b": 38})
     return fig
 
 
 def tab_telemetry(zones_seen: list[str]) -> None:
     if not zones_seen:
-        st.info("No telemetry has arrived yet.")
+        st.info(t("no_telemetry_arrived"))
         return
     bar = st.columns([1.4, 1.2, 2.4])
     with bar[0]:
-        zone = st.selectbox("Zone", zones_seen, key="tel_zone")
+        zone = st.selectbox(t("sel_zone"), zones_seen, key="tel_zone")
     with bar[1]:
-        show_raw = st.toggle("Show raw points", value=True, key="tel_show_raw",
-                             help="Gray dots are the degraded readings before ML recovery.")
+        show_raw = st.toggle(t("tel_show_raw"), value=True, key="tel_show_raw",
+                             help=t("tel_show_raw_help"))
     raw = _get("/raw", zone=zone, last_n=200)
     proc = _get("/processed", zone=zone, last_n=200)
 
-    raw_records = raw.get("records", [])
-    raw_df = pd.DataFrame(raw_records)
+    raw_df = pd.DataFrame(raw.get("records", []))
     proc_df = pd.DataFrame(proc.get("records", []))
 
     k = st.columns(4)
-    k[0].metric("Raw points",        len(raw_df))
-    k[1].metric("Recovered rows",    len(proc_df))
-    k[2].metric("Packets dropped",   len(raw.get("missing_seqs", [])))
+    k[0].metric(t("tel_raw_points"), len(raw_df))
+    k[1].metric(t("tel_recovered_rows"), len(proc_df))
+    k[2].metric(t("tel_dropped"), len(raw.get("missing_seqs", [])))
     n_anom = int(proc_df.get("anomaly_any", pd.Series(dtype=bool)).sum()) if not proc_df.empty else 0
-    k[3].metric("Flagged anomalies", n_anom)
+    k[3].metric(t("tel_flagged"), n_anom)
 
     missing = raw.get("missing_seqs", [])
     if missing:
         st.markdown(
             f"<div style='margin-top:14px; padding:10px 14px; background:{C_WARN_BG}; "
             f"border:1px solid #f3d9a8; border-radius:6px; color:{C_WARN}; font-size:0.85rem;'>"
-            f"<b>Packet loss detected</b> — {len(missing)} sequence(s) dropped; "
-            f"the ML Processor reconstructed them (shown as hollow diamonds). "
-            f"Recent gaps: <code style='background:white; color:{C_WARN};'>{missing[-20:]}</code>"
-            f"</div>",
+            f"{t('packet_loss_banner', n=len(missing))}"
+            f"<code style='background:white; color:{C_WARN};'>{missing[-20:]}</code></div>",
             unsafe_allow_html=True,
         )
 
-    # legend key — explains every glyph once, so the charts stay uncluttered
     st.markdown(
         f"<div style='margin:14px 0 6px 0; display:flex; gap:18px; flex-wrap:wrap; "
         f"font-size:0.78rem; color:{C_TEXT2};'>"
         f"<span><span style='display:inline-block;width:18px;height:3px;background:{C_PRIMARY};"
-        f"vertical-align:middle;margin-right:5px;'></span>Recovered signal</span>"
-        f"<span><span style='color:{C_PRIMARY};'>◇</span> Reconstructed point</span>"
-        f"<span><span style='color:{C_CRIT};'>✕</span> Z-score / hard breach</span>"
-        f"<span><span style='color:{C_ACCENT};'>○</span> IsolationForest</span>"
+        f"vertical-align:middle;margin-right:5px;'></span>{t('lk_signal')}</span>"
+        f"<span><span style='color:{C_PRIMARY};'>◇</span> {t('lk_recovered')}</span>"
+        f"<span><span style='color:{C_CRIT};'>✕</span> {t('lk_zscore')}</span>"
+        f"<span><span style='color:{C_ACCENT};'>○</span> {t('lk_iforest')}</span>"
         f"<span><span style='display:inline-block;width:12px;height:10px;"
         f"background:{PLOT['normal_band']};opacity:0.25;vertical-align:middle;margin-right:4px;'></span>"
-        f"Normal band</span>"
+        f"{t('lk_normal')}</span>"
         f"<span><span style='display:inline-block;width:12px;height:10px;"
         f"background:{C_CRIT};opacity:0.18;vertical-align:middle;margin-right:4px;'></span>"
-        f"Danger zone</span>"
-        f"</div>",
+        f"{t('lk_danger')}</span></div>",
         unsafe_allow_html=True,
     )
 
-    # layout control — let the user spread the charts out
-    per_row = st.radio(
-        "Charts per row", [1, 2], index=1, horizontal=True, key="tel_per_row",
-        help="Switch to 1 per row for full-width, easier-to-read charts.",
-    )
+    per_row = st.radio(t("charts_per_row"), [1, 2], index=1, horizontal=True,
+                       key="tel_per_row", help=t("charts_per_row_help"))
     st.markdown("<div style='height:6px'></div>", unsafe_allow_html=True)
 
     height = 360 if per_row == 1 else 320
     if per_row == 1:
         for name in SENSOR_NAMES:
             fig = _sensor_chart(name, raw_df, proc_df, show_raw=show_raw)
-            fig.update_layout(showlegend=False)
+            fig.update_layout(showlegend=False, height=height)
             st.plotly_chart(fig, use_container_width=True, key=f"tel_{zone}_{name}",
                             config={"displayModeBar": False})
     else:
@@ -864,32 +1020,12 @@ def tab_telemetry(zones_seen: list[str]) -> None:
 
 # ─────────────────────────────────────────────────── tab: Pipeline
 AGENT_CARDS = [
-    ("01", "Generator",
-     "agents/generator.py",
-     "Multi-zone BEMS sample stream. Each tick emits one sample per zone with a daily-cycle baseline, "
-     "Gaussian noise, and a ground-truth anomaly label that downstream evaluation depends on."),
-    ("02", "Transmitter",
-     "agents/transmitter.py",
-     "Forwards every sample twice — clean copy to /truth (for evaluation), degraded copy (variable delay, "
-     "10% packet drop, electromagnetic-interference noise) to /ingest."),
-    ("03", "Collector",
-     "agents/collector.py",
-     "FastAPI service. Persists truth, readings, and decisions to SQLite (WAL mode). Hosts the background "
-     "decision worker. Exposes raw, processed, decisions, stats, evaluation, scenarios, inject."),
-    ("04", "ML Processor",
-     "agents/ml_processor.py",
-     "Per-zone reindex and linear interpolation of dropped sequences. Three detectors run in parallel: "
-     "robust Z-score (MAD-based, |z|>2.5), IsolationForest (multivariate, contamination=0.05), and the "
-     "hard physical thresholds from the operating spec."),
-    ("05", "Decision",
-     "agents/decision.py",
-     "Severity classification (Normal / Warning / Critical). Rule-engine root-cause inference matches the "
-     "fired-sensor pattern against a runbook of known events (HVAC failure, fire risk, peak load, cold "
-     "snap, occupancy spike, …) and outputs an explainable diagnosis and recommended action."),
-    ("06", "Dashboard",
-     "agents/dashboard.py",
-     "This console. Polls the Collector and renders the operations view, telemetry, alerts, scenario "
-     "lab, and quality-metrics surfaces."),
+    ("01", "Generator",    "src/agents/generator.py",    "role_generator"),
+    ("02", "Transmitter",  "src/agents/transmitter.py",  "role_transmitter"),
+    ("03", "Collector",    "src/agents/collector.py",    "role_collector"),
+    ("04", "ML Processor", "src/agents/ml_processor.py", "role_ml"),
+    ("05", "Decision",     "src/agents/decision.py",     "role_decision"),
+    ("06", "Dashboard",    "dashboard/app.py",           "role_dashboard"),
 ]
 
 
@@ -902,18 +1038,18 @@ def tab_pipeline(stats: dict, decisions: list[dict]) -> None:
     last_dec_h = datetime.fromtimestamp(last_dec).strftime("%H:%M:%S") if last_dec else "—"
 
     kpis = {
-        "Generator":    {"k1": ("Truth rows", f"{stats.get('total_truth', 0):,}"),
-                         "k2": ("Cadence",    f"{PIPELINE.sample_interval_s:.1f}s")},
-        "Transmitter":  {"k1": ("Received",   f"{received:,}"),
-                         "k2": ("Dropped",    f"{missing:,}")},
-        "Collector":    {"k1": ("Zones",      f"{len(zones)}"),
-                         "k2": ("Database",   PIPELINE.db_path.split('/')[-1])},
-        "ML Processor": {"k1": ("Window",     f"{PIPELINE.window_size} rows"),
-                         "k2": ("Z-threshold",f"{PIPELINE.zscore_threshold}")},
-        "Decision":     {"k1": ("Decisions",  f"{worker.get('decisions_made', 0):,}"),
-                         "k2": ("Last tick",  last_dec_h)},
-        "Dashboard":    {"k1": ("Refresh",    "live"),
-                         "k2": ("Render",     "Streamlit + Plotly")},
+        "Generator":    {"k1": (t("kp_truth_rows"), f"{stats.get('total_truth', 0):,}"),
+                         "k2": (t("kp_cadence"),    f"{PIPELINE.sample_interval_s:.1f}s")},
+        "Transmitter":  {"k1": (t("kp_received"),   f"{received:,}"),
+                         "k2": (t("kp_dropped"),    f"{missing:,}")},
+        "Collector":    {"k1": (t("kp_zones"),      f"{len(zones)}"),
+                         "k2": (t("kp_database"),   PIPELINE.db_path.split('/')[-1])},
+        "ML Processor": {"k1": (t("kp_window"),     t("win_rows", n=PIPELINE.window_size)),
+                         "k2": (t("kp_zthr"),       f"{PIPELINE.zscore_threshold}")},
+        "Decision":     {"k1": (t("kp_decisions"),  f"{worker.get('decisions_made', 0):,}"),
+                         "k2": (t("kp_last_tick"),  last_dec_h)},
+        "Dashboard":    {"k1": (t("kp_refresh"),    t("render_live")),
+                         "k2": (t("kp_render"),     "Streamlit + Plotly")},
     }
     status_kind = {
         "Generator":    "ok" if stats.get("total_truth", 0) > 0 else "muted",
@@ -923,19 +1059,18 @@ def tab_pipeline(stats: dict, decisions: list[dict]) -> None:
         "Decision":     "crit" if worker.get("last_error") else ("ok" if worker.get("running") else "muted"),
         "Dashboard":    "ok",
     }
-    status_label = {"ok": "Operational", "muted": "Idle", "crit": "Error"}
+    status_label = {"ok": t("st_operational"), "muted": t("st_idle"), "crit": t("st_error")}
 
-    st.markdown("<div class='section-title'>Agent Topology</div>", unsafe_allow_html=True)
-    st.markdown("<div class='section-sub'>Six independent agents communicating via REST. "
-                "Each card lists the agent's responsibility, source file, and live KPIs.</div>",
-                unsafe_allow_html=True)
+    st.markdown(f"<div class='section-title'>{t('agent_topology')}</div>", unsafe_allow_html=True)
+    st.markdown(f"<div class='section-sub'>{t('agent_topology_sub')}</div>", unsafe_allow_html=True)
 
     for i in (0, 2, 4):
-        cols = st.columns(2)
+        cols = st.columns(2, gap="large")
         for j, col in enumerate(cols):
             idx = i + j
-            if idx >= len(AGENT_CARDS): continue
-            num, name, path, role = AGENT_CARDS[idx]
+            if idx >= len(AGENT_CARDS):
+                continue
+            num, name, path, role_key = AGENT_CARDS[idx]
             kind = status_kind.get(name, "muted")
             k1 = kpis[name]["k1"]; k2 = kpis[name]["k2"]
             with col:
@@ -951,7 +1086,7 @@ def tab_pipeline(stats: dict, decisions: list[dict]) -> None:
                         </div>
                         {_pill(kind, status_label.get(kind, kind))}
                       </div>
-                      <div style='color:{C_TEXT2}; font-size:0.86rem; line-height:1.5; margin:8px 0 12px 0;'>{role}</div>
+                      <div style='color:{C_TEXT2}; font-size:0.86rem; line-height:1.5; margin:8px 0 12px 0;'>{t(role_key)}</div>
                       <div style='display:flex; gap:12px;'>
                         <div style='flex:1; padding:8px 12px; background:{C_SURFACE2}; border-radius:6px;'>
                           <div style='font-size:0.68rem; color:{C_MUTED}; text-transform:uppercase; letter-spacing:0.06em; font-weight:600;'>{k1[0]}</div>
@@ -963,7 +1098,7 @@ def tab_pipeline(stats: dict, decisions: list[dict]) -> None:
                         </div>
                       </div>
                       <div style='font-size:0.74rem; color:{C_MUTED}; margin-top:10px;'>
-                        Source: <code style='background:{C_SURFACE2}; padding:2px 6px; border-radius:4px;'>{path}</code>
+                        {t('source_label')}: <code style='background:{C_SURFACE2}; padding:2px 6px; border-radius:4px;'>{path}</code>
                       </div>
                     </div>
                     """,
@@ -974,48 +1109,38 @@ def tab_pipeline(stats: dict, decisions: list[dict]) -> None:
 # ─────────────────────────────────────────────────── tab: Alerts
 def tab_alerts(decisions: list[dict]) -> None:
     if not decisions:
-        st.info("No alerts have been generated yet.")
+        st.info(t("no_alerts"))
         return
 
     df = pd.DataFrame(decisions)
     df["time"] = pd.to_datetime(df["decided_at"], unit="s")
 
     k = st.columns(4)
-    k[0].metric("Total decisions", len(df))
-    k[1].metric("Critical", int((df["severity"] == "Critical").sum()))
-    k[2].metric("Warning",  int((df["severity"] == "Warning").sum()))
-    k[3].metric("Normal",   int((df["severity"] == "Normal").sum()))
+    k[0].metric(t("al_total"), len(df))
+    k[1].metric(t("al_critical"), int((df["severity"] == "Critical").sum()))
+    k[2].metric(t("al_warning"), int((df["severity"] == "Warning").sum()))
+    k[3].metric(t("al_normal"), int((df["severity"] == "Normal").sum()))
 
     st.markdown("<br>", unsafe_allow_html=True)
-
     f1, f2, f3 = st.columns([1.5, 1.5, 1])
-    sev_filter = f1.multiselect(
-        "Severity", ["Critical", "Warning", "Normal"],
-        default=["Critical", "Warning"], key="sev_filter",
-    )
-    zone_filter = f2.multiselect(
-        "Zone", sorted(df["zone"].unique().tolist()),
-        default=sorted(df["zone"].unique().tolist()), key="zone_filter",
-    )
-    limit = f3.slider("Max rows", 10, 200, 50, 10, key="alerts_limit")
+    sev_filter = f1.multiselect(t("f_severity"), ["Critical", "Warning", "Normal"],
+                                default=["Critical", "Warning"], key="sev_filter")
+    zone_filter = f2.multiselect(t("f_zone"), sorted(df["zone"].unique().tolist()),
+                                 default=sorted(df["zone"].unique().tolist()), key="zone_filter")
+    limit = f3.slider(t("f_max_rows"), 10, 200, 50, 10, key="alerts_limit")
 
     filt = df[df["severity"].isin(sev_filter) & df["zone"].isin(zone_filter)].head(limit)
     if filt.empty:
-        st.caption("No alerts match the current filters.")
+        st.caption(t("no_match"))
         return
 
-    # Export CSV
     csv_buf = io.StringIO()
     filt[["time", "zone", "seq", "severity", "diagnosis", "action",
           "detector", "alert"]].to_csv(csv_buf, index=False)
-    st.download_button(
-        "Export filtered alerts (CSV)",
-        csv_buf.getvalue(), file_name="bems_alerts.csv", mime="text/csv",
-        use_container_width=False,
-    )
+    st.download_button(t("export_csv"), csv_buf.getvalue(),
+                       file_name="bems_alerts.csv", mime="text/csv")
 
     st.markdown("<br>", unsafe_allow_html=True)
-
     for _, rec in filt.iterrows():
         sev = rec["severity"]
         color = SEVERITY_COLOR.get(sev, C_MUTED)
@@ -1023,8 +1148,8 @@ def tab_alerts(decisions: list[dict]) -> None:
         date = datetime.fromtimestamp(rec["decided_at"]).strftime("%Y-%m-%d")
         chips = " ".join(
             f"<span class='pill pill-muted' style='font-size:0.7rem;'>"
-            f"{t['sensor']} = {t['value']}{t['unit']} (z={t['z']})</span>"
-            for t in (rec.get("triggered") or [])
+            f"{tt['sensor']} = {tt['value']}{tt['unit']} (z={tt['z']})</span>"
+            for tt in (rec.get("triggered") or [])
         )
         kind = {"Critical": "crit", "Warning": "warn", "Normal": "ok"}.get(sev, "muted")
         st.markdown(
@@ -1040,12 +1165,12 @@ def tab_alerts(decisions: list[dict]) -> None:
                 <div>seq <code>{rec['seq']}</code></div>
               </div>
               <div class='alert-meta-col'>
-                <div style='color:{C_MUTED};'>Detector</div>
+                <div style='color:{C_MUTED};'>{t('detector')}</div>
                 <div><code>{rec.get('detector','—')}</code></div>
               </div>
               <div>
                 <div class='alert-diag'>{rec.get('diagnosis','—')}</div>
-                <div class='alert-action'><b>Recommended action:</b> {rec.get('action','—')}</div>
+                <div class='alert-action'><b>{t('rec_action')}</b> {rec.get('action','—')}</div>
                 <div class='alert-evidence'>{chips}</div>
               </div>
             </div>
@@ -1056,27 +1181,19 @@ def tab_alerts(decisions: list[dict]) -> None:
 
 # ─────────────────────────────────────────────────── tab: Scenario Lab
 def tab_scenario_lab(scenarios_resp: dict, zones_seen: list[str]) -> None:
-    st.markdown("<div class='section-title'>Controlled Fault Injection</div>",
-                unsafe_allow_html=True)
-    st.markdown(
-        "<div class='section-sub'>Push synthetic samples into the pipeline to validate runbooks "
-        "and detector response. Injected samples are labelled as ground-truth anomalies so the "
-        "Quality Metrics surface can score them.</div>",
-        unsafe_allow_html=True,
-    )
+    st.markdown(f"<div class='section-title'>{t('ci_title')}</div>", unsafe_allow_html=True)
+    st.markdown(f"<div class='section-sub'>{t('ci_sub')}</div>", unsafe_allow_html=True)
 
     scenarios = scenarios_resp.get("scenarios", [])
     zones_for_inject = ZONE_NAMES
 
     st.markdown(
-        "<div style='font-weight:700; color:" + C_TEXT + "; margin:4px 0 10px 0; "
-        "font-size:0.92rem;'>Preset scenarios</div>",
-        unsafe_allow_html=True,
-    )
+        f"<div style='font-weight:700; color:{C_TEXT}; margin:4px 0 10px 0; font-size:0.92rem;'>"
+        f"{t('preset_scenarios')}</div>", unsafe_allow_html=True)
 
     rows = [scenarios[i:i + 3] for i in range(0, len(scenarios), 3)]
     for row in rows:
-        cols = st.columns(3)
+        cols = st.columns(3, gap="large")
         for col, sc in zip(cols, row):
             with col:
                 st.markdown(
@@ -1089,71 +1206,59 @@ def tab_scenario_lab(scenarios_resp: dict, zones_seen: list[str]) -> None:
                     """,
                     unsafe_allow_html=True,
                 )
-                zone = st.selectbox(
-                    "Target zone", zones_for_inject, key=f"inj_zone_{sc['tag']}",
-                    label_visibility="collapsed",
-                )
-                if st.button(f"Inject into {zone}", key=f"inj_btn_{sc['tag']}",
+                zone = st.selectbox(t("target_zone"), zones_for_inject,
+                                    key=f"inj_zone_{sc['tag']}", label_visibility="collapsed")
+                if st.button(t("inject_into", zone=zone), key=f"inj_btn_{sc['tag']}",
                              use_container_width=True, type="primary"):
                     res = _post("/inject", json={
-                        "zone": zone, "scenario": sc["tag"], "label_as_anomaly": True,
-                    })
+                        "zone": zone, "scenario": sc["tag"], "label_as_anomaly": True})
                     if res.get("ok"):
-                        st.success(
-                            f"Injected {sc['tag']} into {zone} at seq {res.get('seq')}. "
-                            f"Decision will appear in the Alerts tab within "
-                            f"{PIPELINE.decision_worker_interval_s:.0f}s."
-                        )
+                        st.success(t("inject_success", tag=sc["tag"], zone=zone,
+                                     seq=res.get("seq"),
+                                     s=f"{PIPELINE.decision_worker_interval_s:.0f}"))
 
     st.markdown("<br>", unsafe_allow_html=True)
     st.markdown(
-        "<div style='font-weight:700; color:" + C_TEXT + "; margin:4px 0 10px 0; "
-        "font-size:0.92rem;'>Custom sample</div>",
-        unsafe_allow_html=True,
-    )
+        f"<div style='font-weight:700; color:{C_TEXT}; margin:4px 0 10px 0; font-size:0.92rem;'>"
+        f"{t('custom_sample')}</div>", unsafe_allow_html=True)
     with st.form("manual_inject", clear_on_submit=False, border=True):
         cz, cl = st.columns([1, 1])
-        zone = cz.selectbox("Zone", zones_for_inject, key="manual_zone")
-        label = cl.checkbox("Label as ground-truth anomaly", value=True)
+        zone = cz.selectbox(t("sel_zone"), zones_for_inject, key="manual_zone")
+        label = cl.checkbox(t("label_anomaly"), value=True)
         c1, c2, c3, c4 = st.columns(4)
         power = c1.number_input("Power (kW)",       value=2.5,  step=0.5,  format="%.2f")
         temp  = c2.number_input("Temperature (°C)", value=23.0, step=0.5,  format="%.2f")
         hum   = c3.number_input("Humidity (%)",     value=50.0, step=1.0,  format="%.2f")
         co2   = c4.number_input("CO₂ (ppm)",        value=600,  step=20)
-        submitted = st.form_submit_button("Inject custom sample", type="primary")
-        if submitted:
+        if st.form_submit_button(t("inject_custom"), type="primary"):
             res = _post("/inject", json={
                 "zone": zone,
                 "readings": {"power": float(power), "temperature": float(temp),
                              "humidity": float(hum), "co2": float(co2)},
-                "label_as_anomaly": bool(label),
-            })
+                "label_as_anomaly": bool(label)})
             if res.get("ok"):
-                st.success(f"Injected into {zone} at seq {res.get('seq')}.")
+                st.success(t("inject_custom_ok", zone=zone, seq=res.get("seq")))
 
     st.markdown("<br>", unsafe_allow_html=True)
     st.markdown(
-        "<div style='font-weight:700; color:" + C_TEXT + "; margin:4px 0 10px 0; "
-        "font-size:0.92rem;'>Recent injections</div>",
-        unsafe_allow_html=True,
-    )
+        f"<div style='font-weight:700; color:{C_TEXT}; margin:4px 0 10px 0; font-size:0.92rem;'>"
+        f"{t('recent_injections')}</div>", unsafe_allow_html=True)
     seen = (zones_seen or zones_for_inject)
-    rows: list[dict] = []
+    rows2: list[dict] = []
     for z in seen:
         for r in _get("/raw", zone=z, last_n=200).get("records", []):
             if r.get("source") == "manual":
-                rows.append(r)
-    if not rows:
-        st.caption("No manual injections have been recorded yet.")
+                rows2.append(r)
+    if not rows2:
+        st.caption(t("no_injections"))
         return
-    rows.sort(key=lambda r: r.get("received_at", 0), reverse=True)
-    show = pd.DataFrame(rows[:12])
+    rows2.sort(key=lambda r: r.get("received_at", 0), reverse=True)
+    show = pd.DataFrame(rows2[:12])
     show["time"] = pd.to_datetime(show["received_at"], unit="s").dt.strftime("%H:%M:%S")
     st.dataframe(
         show[["time", "zone", "seq", *SENSOR_NAMES]].rename(columns={
-            "time": "Time", "zone": "Zone", "seq": "Seq",
-            **{n: n.title() for n in SENSOR_NAMES},
-        }),
+            "time": t("col_time"), "zone": t("col_zone"), "seq": t("col_seq"),
+            **{n: n.title() for n in SENSOR_NAMES}}),
         use_container_width=True, hide_index=True,
     )
 
@@ -1161,75 +1266,64 @@ def tab_scenario_lab(scenarios_resp: dict, zones_seen: list[str]) -> None:
 # ─────────────────────────────────────────────────── tab: Quality Metrics
 def tab_metrics(zones_seen: list[str]) -> None:
     if not zones_seen:
-        st.info("No data to evaluate yet.")
+        st.info(t("no_data_eval"))
         return
     bar = st.columns([1.2, 4])
-    zone = bar[0].selectbox("Zone", zones_seen, key="metrics_zone")
+    zone = bar[0].selectbox(t("sel_zone"), zones_seen, key="metrics_zone")
     data = _get("/evaluation", zone=zone) or {}
 
     interp = (data.get("interpolation") or {})
     det = (data.get("detection") or {})
 
-    st.markdown("<div class='section-title'>Interpolation Quality</div>", unsafe_allow_html=True)
-    st.markdown(
-        "<div class='section-sub'>Mean absolute error between recovered values and ground-truth. "
-        "<b>Recovered-only</b> is the column to optimise — it isolates the dropped sequences "
-        "the ML Processor actually had to reconstruct.</div>",
-        unsafe_allow_html=True,
-    )
+    st.markdown(f"<div class='section-title'>{t('interp_quality')}</div>", unsafe_allow_html=True)
+    st.markdown(f"<div class='section-sub'>{t('interp_sub')}</div>", unsafe_allow_html=True)
+
     per_sensor = interp.get("per_sensor") or {}
     avg_mae = (sum(v["mae_recovered_only"] for v in per_sensor.values()) / len(per_sensor)
                if per_sensor else 0.0)
     k = st.columns(3)
-    k[0].metric("Truth rows",          interp.get("n_truth", 0))
-    k[1].metric("Recovered gaps",      interp.get("n_missing", 0))
-    k[2].metric("Avg recovery MAE",    f"{avg_mae:.2f}")
+    k[0].metric(t("m_truth_rows"), interp.get("n_truth", 0))
+    k[1].metric(t("m_recovered_gaps"), interp.get("n_missing", 0))
+    k[2].metric(t("m_avg_mae"), f"{avg_mae:.2f}")
 
     if per_sensor:
         rows = []
         for name, v in per_sensor.items():
             spec = SENSORS[name]
             rows.append({
-                "Sensor":            f"{name} ({spec.unit})",
-                "MAE (recovered)":   v["mae_recovered_only"],
-                "MAE (all rows)":    v["mae_overall"],
-                "Recovered samples": v["n_gap_samples"],
+                t("col_sensor"):      f"{name} ({spec.unit})",
+                t("col_mae_rec"):     v["mae_recovered_only"],
+                t("col_mae_all"):     v["mae_overall"],
+                t("col_rec_samples"): v["n_gap_samples"],
             })
         st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
     else:
-        st.caption("Not enough overlap between truth and readings yet.")
+        st.caption(t("not_enough_overlap"))
 
-    st.markdown("<br><div class='section-title'>Anomaly Detection Performance</div>",
-                unsafe_allow_html=True)
-    st.markdown(
-        "<div class='section-sub'>Precision / Recall / F1 of each detector against the "
-        "ground-truth anomaly labels. <b>Union</b> combines all three.</div>",
-        unsafe_allow_html=True,
-    )
+    st.markdown(f"<br><div class='section-title'>{t('detection_perf')}</div>", unsafe_allow_html=True)
+    st.markdown(f"<div class='section-sub'>{t('detection_sub')}</div>", unsafe_allow_html=True)
 
     k = st.columns(3)
-    k[0].metric("Labelled samples",     det.get("support", 0))
-    k[1].metric("Anomaly prevalence",   f"{(det.get('anomaly_prevalence', 0)*100):.1f}%")
-    k[2].metric("Detectors evaluated",  len(det.get("detectors") or {}))
+    k[0].metric(t("m_labelled"), det.get("support", 0))
+    k[1].metric(t("m_prevalence"), f"{(det.get('anomaly_prevalence', 0)*100):.1f}%")
+    k[2].metric(t("m_detectors"), len(det.get("detectors") or {}))
 
     detectors = det.get("detectors") or {}
     if not detectors:
-        st.caption("Need a few labelled samples before metrics are meaningful.")
+        st.caption(t("need_labelled"))
         return
     rows = []
     for d_name, m in detectors.items():
         rows.append({
-            "Detector":  d_name,
+            "Detector": d_name,
             "Precision": m["precision"], "Recall": m["recall"], "F1": m["f1"],
             "TP": m["tp"], "FP": m["fp"], "FN": m["fn"], "TN": m["tn"],
         })
     df = pd.DataFrame(rows)
 
     chart_col, table_col = st.columns([1.4, 1], gap="large")
-
     with chart_col:
-        st.markdown("<div class='chart-label'>Precision · Recall · F1 by detector</div>",
-                    unsafe_allow_html=True)
+        st.markdown(f"<div class='chart-label'>{t('prf_label')}</div>", unsafe_allow_html=True)
         melted = df.melt(id_vars="Detector", value_vars=["Precision", "Recall", "F1"],
                          var_name="Metric", value_name="Score")
         metric_colors = {"Precision": C_PRIMARY, "Recall": C_ACCENT, "F1": C_OK}
@@ -1241,35 +1335,29 @@ def tab_metrics(zones_seen: list[str]) -> None:
                           textfont={"color": C_TEXT, "size": 10}, cliponaxis=False)
         _style_axes(fig, height=360)
         fig.update_layout(
-            legend={"orientation": "h", "y": 1.12, "x": 0, "title": "",
-                    "font": {"size": 11}},
-            bargap=0.28, bargroupgap=0.08,
-        )
+            legend={"orientation": "h", "y": 1.12, "x": 0, "title": "", "font": {"size": 11}},
+            bargap=0.28, bargroupgap=0.08)
         fig.update_xaxes(title_text="")
         fig.update_yaxes(title_text="score")
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
 
     with table_col:
-        st.markdown("<div class='chart-label'>Confusion counts</div>",
-                    unsafe_allow_html=True)
+        st.markdown(f"<div class='chart-label'>{t('confusion_counts')}</div>", unsafe_allow_html=True)
         st.dataframe(
             df[["Detector", "Precision", "Recall", "F1", "TP", "FP", "FN", "TN"]],
             use_container_width=True, hide_index=True,
             column_config={
-                "Precision": st.column_config.ProgressColumn(
-                    "Precision", min_value=0, max_value=1, format="%.2f"),
-                "Recall": st.column_config.ProgressColumn(
-                    "Recall", min_value=0, max_value=1, format="%.2f"),
-                "F1": st.column_config.ProgressColumn(
-                    "F1", min_value=0, max_value=1, format="%.2f"),
+                "Precision": st.column_config.ProgressColumn("Precision", min_value=0, max_value=1, format="%.2f"),
+                "Recall": st.column_config.ProgressColumn("Recall", min_value=0, max_value=1, format="%.2f"),
+                "F1": st.column_config.ProgressColumn("F1", min_value=0, max_value=1, format="%.2f"),
             },
         )
         best = df.loc[df["F1"].idxmax()]
+        best_f1_val = f"{best['F1']:.2f}"
         st.markdown(
             f"<div style='margin-top:8px; padding:10px 14px; background:{C_OK_BG}; "
             f"border:1px solid #c2e5d3; border-radius:6px; font-size:0.82rem; color:{C_TEXT};'>"
-            f"Best F1: <b>{best['Detector']}</b> at <b>{best['F1']:.2f}</b> — the "
-            f"<code>union</code> combines all three detectors' strengths.</div>",
+            f"{t('best_f1', d=best['Detector'], f=best_f1_val)}</div>",
             unsafe_allow_html=True,
         )
 
@@ -1286,7 +1374,8 @@ def main() -> None:
     _app_bar(stats)
 
     tabs = st.tabs([
-        "Operations", "Telemetry", "Pipeline", "Alerts", "Scenario Lab", "Quality Metrics",
+        t("tab_operations"), t("tab_telemetry"), t("tab_pipeline"),
+        t("tab_alerts"), t("tab_scenario"), t("tab_metrics"),
     ])
     with tabs[0]: tab_operations(stats, decisions)
     with tabs[1]: tab_telemetry(zones_seen or ZONE_NAMES)
@@ -1299,7 +1388,7 @@ def main() -> None:
         f"<div style='margin-top:20px; padding-top:14px; border-top:1px solid {C_BORDER}; "
         f"display:flex; justify-content:space-between; font-size:0.76rem; color:{C_MUTED};'>"
         f"<div>BEMS Anomaly Operations Center · v2.0</div>"
-        f"<div>Last refresh {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</div>"
+        f"<div>{t('footer_refresh', ts=datetime.now().strftime('%Y-%m-%d %H:%M:%S'))}</div>"
         f"</div>",
         unsafe_allow_html=True,
     )
