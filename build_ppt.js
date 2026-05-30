@@ -569,7 +569,7 @@ const TOTAL = 14;
     x: MARGIN + 0.8, y: 2.4, w: colW - 1, h: 0.35,
     fontFace: FONT, fontSize: 17, color: C.text, bold: true, margin: 0,
   });
-  s.addText("agents/generator.py", {
+  s.addText("src/agents/generator.py", {
     x: MARGIN + 0.8, y: 2.75, w: colW - 1, h: 0.3,
     fontFace: FONTm, fontSize: 10, color: C.muted, margin: 0,
   });
@@ -616,7 +616,7 @@ const TOTAL = 14;
     x: rx + 0.8, y: 2.4, w: colW - 1, h: 0.35,
     fontFace: FONT, fontSize: 17, color: C.text, bold: true, margin: 0,
   });
-  s.addText("agents/transmitter.py", {
+  s.addText("src/agents/transmitter.py", {
     x: rx + 0.8, y: 2.75, w: colW - 1, h: 0.3,
     fontFace: FONTm, fontSize: 10, color: C.muted, margin: 0,
   });
