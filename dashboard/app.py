@@ -107,6 +107,10 @@ I18N: dict[str, tuple[str, str]] = {
     "bld_inject": ("Inject", "주입"),
     "bld_no_data": ("No live data yet — start the transmitter or inject a sample.",
                     "아직 실시간 데이터가 없습니다 — 송신기를 켜거나 샘플을 주입하세요."),
+    "bld_status_ok": ("All zones nominal", "모든 존 정상"),
+    "bld_status_warn": ("Attention — warnings active", "주의 — Warning 발생 중"),
+    "bld_status_crit": ("Critical — immediate attention required", "Critical — 즉시 조치 필요"),
+    "bld_trend": ("recent trend", "최근 추세"),
     # operations KPIs
     "kpi_zones": ("Active Zones", "활성 존"),
     "kpi_received": ("Packets Received", "수신 패킷"),
@@ -556,17 +560,33 @@ hr {{ margin: 0.6rem 0 !important; border-color: var(--border) !important; }}
 .floor-name {{ font-size: 1.25rem; font-weight: 800; color: var(--text); line-height: 1.1; }}
 .floor-fn {{ font-size: 0.78rem; color: var(--muted); margin: 3px 0 9px 0; }}
 .floor-sensors {{ display: flex; gap: 10px; flex: 1; flex-wrap: wrap; }}
-.schip {{
-  flex: 1; min-width: 120px; border: 1px solid var(--border); border-radius: 9px;
-  padding: 9px 13px; background: var(--surface);
-  display: flex; align-items: center; gap: 9px;
+.bld-summary {{
+  max-width: 940px; margin: 0 auto 14px auto;
+  display: flex; align-items: center; gap: 16px;
+  padding: 13px 20px; background: var(--surface);
+  border: 1px solid var(--border); border-radius: 12px;
+  box-shadow: 0 1px 2px rgba(9,30,66,0.05);
 }}
-.schip .dot {{ width: 10px; height: 10px; border-radius: 50%; flex: 0 0 auto; }}
+.bld-summary .bs-status {{ font-size: 1.05rem; font-weight: 800; color: var(--text); }}
+.bld-summary .bs-counts {{ margin-left: auto; display: flex; gap: 8px; }}
+.floor-num {{
+  display: inline-flex; width: 30px; height: 30px; border-radius: 8px;
+  background: var(--surface2); color: var(--text2); font-weight: 800;
+  align-items: center; justify-content: center; font-size: 0.9rem;
+  margin-bottom: 8px; border: 1px solid var(--border);
+}}
+.schip {{
+  flex: 1; min-width: 152px; border: 1px solid var(--border); border-radius: 10px;
+  padding: 8px 11px 7px 11px; background: var(--surface);
+}}
+.schip-top {{ display: flex; align-items: center; gap: 8px; }}
+.schip .dot {{ width: 9px; height: 9px; border-radius: 50%; flex: 0 0 auto; }}
 .schip.ok .dot  {{ background: #16a34a; }}
 .schip.bad .dot {{ background: #ef4444; box-shadow: 0 0 0 4px rgba(239,68,68,0.16); }}
-.schip .sname {{ font-size: 0.68rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; }}
-.schip .sval  {{ margin-left: auto; font-size: 1.1rem; font-weight: 800; color: var(--text); font-variant-numeric: tabular-nums; }}
-.schip .sunit {{ font-size: 0.72rem; color: var(--muted); font-weight: 600; margin-left: 3px; }}
+.schip .sname {{ font-size: 0.66rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; }}
+.schip .sval  {{ margin-left: auto; font-size: 1.02rem; font-weight: 800; color: var(--text); font-variant-numeric: tabular-nums; }}
+.schip .sunit {{ font-size: 0.7rem; color: var(--muted); font-weight: 600; margin-left: 2px; }}
+.schip .spark {{ margin-top: 5px; height: 28px; }}
 .schip.bad {{ border-color: #f3c4be; background: #fdeeec; }}
 .floor-diag {{ font-size: 0.78rem; color: #b91c1c; font-weight: 600; margin-top: 8px; }}
 @keyframes floorpulse {{
@@ -1445,6 +1465,34 @@ def _fmt_val(name: str, v) -> str:
     return f"{f:.0f}" if name in ("humidity", "co2") else f"{f:.1f}"
 
 
+def _sparkline_svg(vals, color, w: int = 134, h: int = 28) -> str:
+    """Inline SVG mini trend line, normalized to its own min/max."""
+    pts = []
+    for v in vals:
+        try:
+            pts.append(float(v))
+        except (TypeError, ValueError):
+            pass
+    if len(pts) < 2:
+        return "<div class='spark'></div>"
+    mn, mx = min(pts), max(pts)
+    rng = (mx - mn) or 1.0
+    nn = len(pts)
+    coords = " ".join(
+        f"{(i/(nn-1))*w:.1f},{(h - ((v-mn)/rng)*(h-6) - 3):.1f}"
+        for i, v in enumerate(pts)
+    )
+    lx = float(w)
+    ly = h - ((pts[-1]-mn)/rng)*(h-6) - 3
+    return (
+        f"<div class='spark'><svg width='100%' height='{h}' viewBox='0 0 {w} {h}' "
+        f"preserveAspectRatio='none'>"
+        f"<polyline points='{coords}' fill='none' stroke='{color}' stroke-width='1.7' "
+        f"stroke-linejoin='round' stroke-linecap='round'/>"
+        f"<circle cx='{lx:.1f}' cy='{ly:.1f}' r='2.3' fill='{color}'/></svg></div>"
+    )
+
+
 def tab_building(zones_seen: list[str]) -> None:
     st.markdown(
         f"<div class='section-title'><span class='livedot'></span>{t('bld_title')}</div>",
@@ -1458,6 +1506,7 @@ def tab_building(zones_seen: list[str]) -> None:
     order = [z for z in _FLOOR_ORDER if z in zones_seen] + \
             [z for z in zones_seen if z not in _FLOOR_ORDER]
     n = len(order)
+    counts = {"Normal": 0, "Warning": 0, "Critical": 0}
 
     floors_html = ""
     for i, z in enumerate(order):
@@ -1466,22 +1515,27 @@ def tab_building(zones_seen: list[str]) -> None:
         sev = dec[0]["severity"] if dec else "Normal"
         diag = dec[0].get("diagnosis", "") if dec else ""
         row = proc[-1] if proc else {}
+        counts[sev] = counts.get(sev, 0) + 1
 
         color = SEVERITY_COLOR.get(sev, C_OK)
         tint = {"Normal": C_SURFACE, "Warning": "#fff8ec", "Critical": "#fdeeec"}.get(sev, C_SURFACE)
         pulse = "crit" if sev == "Critical" else ""
         kind = {"Critical": "crit", "Warning": "warn", "Normal": "ok"}.get(sev, "ok")
 
+        recent = proc[-40:]
         chips = ""
         for name in SENSOR_NAMES:
             spec = SENSORS[name]
             bad = bool(row.get(f"{name}_anom"))
+            spark = _sparkline_svg([r.get(name) for r in recent],
+                                   C_CRIT if bad else C_PRIMARY)
             chips += (
                 f"<div class='schip {'bad' if bad else 'ok'}'>"
-                f"<span class='dot'></span>"
+                f"<div class='schip-top'><span class='dot'></span>"
                 f"<span class='sname'>{name}</span>"
                 f"<span class='sval'>{_fmt_val(name, row.get(name))}"
                 f"<span class='sunit'>{spec.unit}</span></span></div>"
+                f"{spark}</div>"
             )
 
         label = ZONES.get(z, {}).get("label", "")
@@ -1490,13 +1544,34 @@ def tab_building(zones_seen: list[str]) -> None:
         floors_html += (
             f"<div class='floor {pulse}' style='border-left:6px solid {color}; background:{tint};'>"
             f"<div class='floor-left'>"
+            f"<div class='floor-num'>F{n - i}</div>"
             f"<div class='floor-name'>{z}</div>"
-            f"<div class='floor-fn'>{label} · {t('bld_floor')} {n - i}</div>"
+            f"<div class='floor-fn'>{label}</div>"
             f"{_pill(kind, sev)}{diag_html}"
             f"</div>"
             f"<div class='floor-sensors'>{chips}</div>"
             f"</div>"
         )
+
+    # ── overall building status banner
+    if counts["Critical"]:
+        bstat, bkind = t("bld_status_crit"), "crit"
+    elif counts["Warning"]:
+        bstat, bkind = t("bld_status_warn"), "warn"
+    else:
+        bstat, bkind = t("bld_status_ok"), "ok"
+    bcolor = {"crit": C_CRIT, "warn": C_WARN, "ok": C_OK}[bkind]
+    st.markdown(
+        f"<div class='bld-summary'>"
+        f"<span class='livedot'></span>"
+        f"<span class='bs-status' style='color:{bcolor};'>{bstat}</span>"
+        f"<span class='bs-counts'>"
+        f"{_pill('crit', str(counts['Critical']) + ' CRITICAL')}"
+        f"{_pill('warn', str(counts['Warning']) + ' WARNING')}"
+        f"{_pill('ok',   str(counts['Normal']) + ' NORMAL')}"
+        f"</span></div>",
+        unsafe_allow_html=True,
+    )
 
     st.markdown(
         f"<div class='bld-wrap'>"
@@ -1512,6 +1587,7 @@ def tab_building(zones_seen: list[str]) -> None:
         f"<span style='color:#16a34a;'>●</span> {('sensor normal' if _lang()=='en' else '센서 정상')}"
         f"&nbsp;&nbsp;<span style='color:#ef4444;'>●</span> "
         f"{('sensor breached' if _lang()=='en' else '센서 위반')}"
+        f"&nbsp;&nbsp;·&nbsp;&nbsp;{('line = ' + t('bld_trend') if _lang()=='en' else '선 = ' + t('bld_trend'))}"
         f"&nbsp;&nbsp;·&nbsp;&nbsp;{('floor tint = zone severity' if _lang()=='en' else '층 색 = 존 심각도')}"
         f"</div>",
         unsafe_allow_html=True,
