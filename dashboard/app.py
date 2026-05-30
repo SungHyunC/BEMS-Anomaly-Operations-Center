@@ -111,6 +111,14 @@ I18N: dict[str, tuple[str, str]] = {
     "bld_status_warn": ("Attention — warnings active", "주의 — Warning 발생 중"),
     "bld_status_crit": ("Critical — immediate attention required", "Critical — 즉시 조치 필요"),
     "bld_trend": ("recent trend", "최근 추세"),
+    "bld_view": ("View", "보기"),
+    "bld_cross": ("Cross-section", "단면도"),
+    "bld_plan": ("Floor plan", "평면도"),
+    "bld_north": ("NORTH", "북"),
+    "bld_drill": ("Drill-down — open a zone's live sensor charts",
+                  "드릴다운 — 존의 실시간 센서 차트 열기"),
+    "bld_inspecting": ("Inspecting", "상세 보기"),
+    "bld_close": ("Close", "닫기"),
     # operations KPIs
     "kpi_zones": ("Active Zones", "활성 존"),
     "kpi_received": ("Packets Received", "수신 패킷"),
@@ -604,6 +612,45 @@ hr {{ margin: 0.6rem 0 !important; border-color: var(--border) !important; }}
   70%  {{ box-shadow: 0 0 0 9px rgba(22,163,74,0); }}
   100% {{ box-shadow: 0 0 0 0 rgba(22,163,74,0); }}
 }}
+
+/* --- building: exterior windows (cross-section facade) ------------- */
+.facade {{
+  width: 42px; flex: 0 0 42px; display: grid;
+  grid-template-columns: 1fr 1fr; gap: 5px; align-content: center;
+  padding-left: 8px; border-left: 1px dashed var(--border);
+}}
+.facade .win {{ aspect-ratio: 1 / 1; border-radius: 2px; background: #c3d4f5; }}
+.facade .win.lit  {{ background: #fde68a; box-shadow: inset 0 0 3px rgba(180,130,0,0.25); }}
+.facade .win.crit {{ background: #fca5a5; }}
+
+/* --- building: top-down floor plan -------------------------------- */
+.plan {{
+  max-width: 940px; margin: 0 auto; padding: 18px;
+  border: 2px solid #c7ced9; border-radius: 16px; position: relative;
+  background: linear-gradient(180deg, #fbfcfe, #eef2f9);
+}}
+.plan-compass {{
+  position: absolute; top: 12px; right: 18px; font-size: 0.7rem;
+  font-weight: 800; color: var(--muted); letter-spacing: 0.1em;
+}}
+.plan-grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(255px, 1fr)); gap: 14px; }}
+.plan-room {{
+  border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px;
+  background: var(--surface); position: relative; overflow: hidden;
+}}
+.room-windows {{ display: flex; gap: 6px; justify-content: center; margin-bottom: 12px; }}
+.rwin {{ width: 18px; height: 8px; border-radius: 2px; background: #c3d4f5; }}
+.rwin.lit  {{ background: #fde68a; }}
+.rwin.crit {{ background: #fca5a5; }}
+.room-name {{ font-size: 1.2rem; font-weight: 800; color: var(--text); }}
+.room-fn {{ font-size: 0.78rem; color: var(--muted); margin: 2px 0 9px 0; }}
+.room-metrics {{ margin-top: 11px; display: grid; grid-template-columns: 1fr 1fr; gap: 7px; }}
+.pm {{ font-size: 0.82rem; color: var(--text2); display: flex; align-items: center; gap: 6px; }}
+.pm .pmdot {{ width: 8px; height: 8px; border-radius: 50%; flex: 0 0 auto; }}
+.pm.ok .pmdot  {{ background: #16a34a; }}
+.pm.bad .pmdot {{ background: #ef4444; box-shadow: 0 0 0 3px rgba(239,68,68,0.15); }}
+.pm.bad {{ color: #b91c1c; font-weight: 700; }}
+.plan-room.crit {{ animation: floorpulse 1.7s ease-in-out infinite; }}
 
 /* --- hide chrome --------------------------------------------------- */
 footer {{ visibility: hidden; }}
@@ -1493,6 +1540,23 @@ def _sparkline_svg(vals, color, w: int = 134, h: int = 28) -> str:
     )
 
 
+def _sensor_chips(row: dict, recent: list[dict]) -> str:
+    chips = ""
+    for name in SENSOR_NAMES:
+        spec = SENSORS[name]
+        bad = bool(row.get(f"{name}_anom"))
+        spark = _sparkline_svg([r.get(name) for r in recent], C_CRIT if bad else C_PRIMARY)
+        chips += (
+            f"<div class='schip {'bad' if bad else 'ok'}'>"
+            f"<div class='schip-top'><span class='dot'></span>"
+            f"<span class='sname'>{name}</span>"
+            f"<span class='sval'>{_fmt_val(name, row.get(name))}"
+            f"<span class='sunit'>{spec.unit}</span></span></div>"
+            f"{spark}</div>"
+        )
+    return chips
+
+
 def tab_building(zones_seen: list[str]) -> None:
     st.markdown(
         f"<div class='section-title'><span class='livedot'></span>{t('bld_title')}</div>",
@@ -1508,50 +1572,16 @@ def tab_building(zones_seen: list[str]) -> None:
     n = len(order)
     counts = {"Normal": 0, "Warning": 0, "Critical": 0}
 
-    floors_html = ""
-    for i, z in enumerate(order):
+    # gather each zone's live state once
+    zdata: dict[str, dict] = {}
+    for z in order:
         proc = _get("/processed", zone=z, last_n=120).get("records", [])
         dec = _get("/decisions", zone=z, last_n=1).get("records", [])
         sev = dec[0]["severity"] if dec else "Normal"
         diag = dec[0].get("diagnosis", "") if dec else ""
         row = proc[-1] if proc else {}
         counts[sev] = counts.get(sev, 0) + 1
-
-        color = SEVERITY_COLOR.get(sev, C_OK)
-        tint = {"Normal": C_SURFACE, "Warning": "#fff8ec", "Critical": "#fdeeec"}.get(sev, C_SURFACE)
-        pulse = "crit" if sev == "Critical" else ""
-        kind = {"Critical": "crit", "Warning": "warn", "Normal": "ok"}.get(sev, "ok")
-
-        recent = proc[-40:]
-        chips = ""
-        for name in SENSOR_NAMES:
-            spec = SENSORS[name]
-            bad = bool(row.get(f"{name}_anom"))
-            spark = _sparkline_svg([r.get(name) for r in recent],
-                                   C_CRIT if bad else C_PRIMARY)
-            chips += (
-                f"<div class='schip {'bad' if bad else 'ok'}'>"
-                f"<div class='schip-top'><span class='dot'></span>"
-                f"<span class='sname'>{name}</span>"
-                f"<span class='sval'>{_fmt_val(name, row.get(name))}"
-                f"<span class='sunit'>{spec.unit}</span></span></div>"
-                f"{spark}</div>"
-            )
-
-        label = ZONES.get(z, {}).get("label", "")
-        diag_html = (f"<div class='floor-diag'>{diag}</div>"
-                     if (sev != "Normal" and diag) else "")
-        floors_html += (
-            f"<div class='floor {pulse}' style='border-left:6px solid {color}; background:{tint};'>"
-            f"<div class='floor-left'>"
-            f"<div class='floor-num'>F{n - i}</div>"
-            f"<div class='floor-name'>{z}</div>"
-            f"<div class='floor-fn'>{label}</div>"
-            f"{_pill(kind, sev)}{diag_html}"
-            f"</div>"
-            f"<div class='floor-sensors'>{chips}</div>"
-            f"</div>"
-        )
+        zdata[z] = {"proc": proc, "sev": sev, "diag": diag, "row": row}
 
     # ── overall building status banner
     if counts["Critical"]:
@@ -1573,25 +1603,133 @@ def tab_building(zones_seen: list[str]) -> None:
         unsafe_allow_html=True,
     )
 
-    st.markdown(
-        f"<div class='bld-wrap'>"
-        f"<div class='bld-roof'>▲ {t('bld_rooftop')}</div>"
-        f"{floors_html}"
-        f"<div class='bld-ground'></div>"
-        f"</div>",
-        unsafe_allow_html=True,
-    )
+    # ── view toggle: cross-section vs top-down floor plan
+    view = st.radio(t("bld_view"), [t("bld_cross"), t("bld_plan")],
+                    horizontal=True, key="bld_view", label_visibility="collapsed")
+    is_plan = (view == t("bld_plan"))
+
+    def _tint(sev):
+        return {"Normal": C_SURFACE, "Warning": "#fff8ec", "Critical": "#fdeeec"}.get(sev, C_SURFACE)
+
+    def _winclass(sev):
+        return "crit" if sev == "Critical" else "lit"
+
+    if is_plan:
+        # ── top-down floor plan: each zone is a room in the building footprint
+        rooms = ""
+        for z in order:
+            d = zdata[z]; sev = d["sev"]; row = d["row"]
+            color = SEVERITY_COLOR.get(sev, C_OK)
+            kind = {"Critical": "crit", "Warning": "warn", "Normal": "ok"}.get(sev, "ok")
+            pulse = "crit" if sev == "Critical" else ""
+            wins = "".join(f"<span class='rwin {_winclass(sev)}'></span>" for _ in range(5))
+            metrics = ""
+            for name in SENSOR_NAMES:
+                bad = bool(row.get(f"{name}_anom"))
+                metrics += (
+                    f"<div class='pm {'bad' if bad else 'ok'}'><span class='pmdot'></span>"
+                    f"{name} <b>{_fmt_val(name, row.get(name))}</b>{SENSORS[name].unit}</div>"
+                )
+            label = ZONES.get(z, {}).get("label", "")
+            diag_html = (f"<div class='floor-diag'>{d['diag']}</div>"
+                         if (sev != "Normal" and d["diag"]) else "")
+            rooms += (
+                f"<div class='plan-room {pulse}' style='border-top:6px solid {color}; background:{_tint(sev)};'>"
+                f"<div class='room-windows'>{wins}</div>"
+                f"<div class='room-name'>{z}</div>"
+                f"<div class='room-fn'>{label}</div>"
+                f"{_pill(kind, sev)}{diag_html}"
+                f"<div class='room-metrics'>{metrics}</div>"
+                f"</div>"
+            )
+        st.markdown(
+            f"<div class='plan'><div class='plan-compass'>↑ {t('bld_north')}</div>"
+            f"<div class='plan-grid'>{rooms}</div></div>",
+            unsafe_allow_html=True,
+        )
+    else:
+        # ── side cross-section with exterior windows
+        floors_html = ""
+        for i, z in enumerate(order):
+            d = zdata[z]; sev = d["sev"]; row = d["row"]
+            color = SEVERITY_COLOR.get(sev, C_OK)
+            pulse = "crit" if sev == "Critical" else ""
+            kind = {"Critical": "crit", "Warning": "warn", "Normal": "ok"}.get(sev, "ok")
+            chips = _sensor_chips(row, d["proc"][-40:])
+            label = ZONES.get(z, {}).get("label", "")
+            diag_html = (f"<div class='floor-diag'>{d['diag']}</div>"
+                         if (sev != "Normal" and d["diag"]) else "")
+            facade = "".join(
+                f"<span class='win {_winclass(sev)}'></span>" for _ in range(6))
+            floors_html += (
+                f"<div class='floor {pulse}' style='border-left:6px solid {color}; background:{_tint(sev)};'>"
+                f"<div class='floor-left'>"
+                f"<div class='floor-num'>F{n - i}</div>"
+                f"<div class='floor-name'>{z}</div>"
+                f"<div class='floor-fn'>{label}</div>"
+                f"{_pill(kind, sev)}{diag_html}"
+                f"</div>"
+                f"<div class='floor-sensors'>{chips}</div>"
+                f"<div class='facade'>{facade}</div>"
+                f"</div>"
+            )
+        st.markdown(
+            f"<div class='bld-wrap'>"
+            f"<div class='bld-roof'>▲ {t('bld_rooftop')}</div>"
+            f"{floors_html}"
+            f"<div class='bld-ground'></div>"
+            f"</div>",
+            unsafe_allow_html=True,
+        )
+
     st.markdown(
         f"<div style='max-width:940px; margin:10px auto 0 auto; font-size:0.78rem; "
-        f"color:{C_TEXT2}; display:flex; gap:6px; align-items:center;'>"
+        f"color:{C_TEXT2}; display:flex; gap:6px; align-items:center; flex-wrap:wrap;'>"
         f"<span style='color:#16a34a;'>●</span> {('sensor normal' if _lang()=='en' else '센서 정상')}"
         f"&nbsp;&nbsp;<span style='color:#ef4444;'>●</span> "
         f"{('sensor breached' if _lang()=='en' else '센서 위반')}"
         f"&nbsp;&nbsp;·&nbsp;&nbsp;{('line = ' + t('bld_trend') if _lang()=='en' else '선 = ' + t('bld_trend'))}"
-        f"&nbsp;&nbsp;·&nbsp;&nbsp;{('floor tint = zone severity' if _lang()=='en' else '층 색 = 존 심각도')}"
+        f"&nbsp;&nbsp;·&nbsp;&nbsp;{('floor tint = severity' if _lang()=='en' else '층 색 = 심각도')}"
         f"</div>",
         unsafe_allow_html=True,
     )
+
+    # ── drill-down: click a zone to open its live sensor charts inline
+    st.markdown("<br>", unsafe_allow_html=True)
+    st.markdown(
+        f"<div style='max-width:940px; margin:0 auto 4px auto; font-weight:700; "
+        f"color:{C_TEXT}; font-size:0.92rem;'>{t('bld_drill')}</div>",
+        unsafe_allow_html=True)
+    dcols = st.columns(len(order))
+    for idx, z in enumerate(order):
+        sev = zdata[z]["sev"]
+        mark = "🔴" if sev == "Critical" else ("🟠" if sev == "Warning" else "🟢")
+        if dcols[idx].button(f"{mark}  {z}", key=f"bld_insp_{z}",
+                             use_container_width=True):
+            st.session_state["bld_inspect"] = z
+
+    insp = st.session_state.get("bld_inspect")
+    if insp in order:
+        hc = st.columns([4, 1])
+        hc[0].markdown(
+            f"<div style='font-size:1.05rem; font-weight:800; color:{C_TEXT}; padding-top:6px;'>"
+            f"🔍 {t('bld_inspecting')}: {insp} · {ZONES.get(insp,{}).get('label','')}</div>",
+            unsafe_allow_html=True)
+        if hc[1].button(t("bld_close"), key="bld_insp_close", use_container_width=True):
+            st.session_state["bld_inspect"] = None
+        else:
+            raw = _get("/raw", zone=insp, last_n=200)
+            proc = _get("/processed", zone=insp, last_n=200)
+            raw_df = pd.DataFrame(raw.get("records", []))
+            proc_df = pd.DataFrame(proc.get("records", []))
+            ccs = st.columns(2, gap="large")
+            for i, name in enumerate(SENSOR_NAMES):
+                with ccs[i % 2]:
+                    fig = _sensor_chart(name, raw_df, proc_df, show_raw=False)
+                    fig.update_layout(showlegend=False, height=300)
+                    st.plotly_chart(fig, use_container_width=True,
+                                    key=f"bldins_{insp}_{name}",
+                                    config={"displayModeBar": False})
 
     # ── live demo controls: inject a fault and watch the floor react
     st.markdown("<br>", unsafe_allow_html=True)
