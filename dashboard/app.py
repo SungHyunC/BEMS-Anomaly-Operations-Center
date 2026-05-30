@@ -627,16 +627,6 @@ hr {{ margin: 0.6rem 0 !important; border-color: var(--border) !important; }}
   100% {{ box-shadow: 0 0 0 0 rgba(22,163,74,0); }}
 }}
 
-/* --- building: exterior windows (cross-section facade) ------------- */
-.facade {{
-  width: 42px; flex: 0 0 42px; display: grid;
-  grid-template-columns: 1fr 1fr; gap: 5px; align-content: center;
-  padding-left: 8px; border-left: 1px dashed var(--border);
-}}
-.facade .win {{ aspect-ratio: 1 / 1; border-radius: 2px; background: #c3d4f5; }}
-.facade .win.lit  {{ background: #fde68a; box-shadow: inset 0 0 3px rgba(180,130,0,0.25); }}
-.facade .win.crit {{ background: #fca5a5; }}
-
 /* --- building: top-down floor plan -------------------------------- */
 .plan {{
   max-width: 940px; margin: 0 auto; padding: 18px;
@@ -652,10 +642,6 @@ hr {{ margin: 0.6rem 0 !important; border-color: var(--border) !important; }}
   border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px;
   background: var(--surface); position: relative; overflow: hidden;
 }}
-.room-windows {{ display: flex; gap: 6px; justify-content: center; margin-bottom: 12px; }}
-.rwin {{ width: 18px; height: 8px; border-radius: 2px; background: #c3d4f5; }}
-.rwin.lit  {{ background: #fde68a; }}
-.rwin.crit {{ background: #fca5a5; }}
 .room-name {{ font-size: 1.2rem; font-weight: 800; color: var(--text); }}
 .room-fn {{ font-size: 0.78rem; color: var(--muted); margin: 2px 0 9px 0; }}
 .room-metrics {{ margin-top: 11px; display: grid; grid-template-columns: 1fr 1fr; gap: 7px; }}
@@ -1768,8 +1754,6 @@ def tab_building(zones_seen: list[str]) -> None:
             label = ZONES.get(z, {}).get("label", "")
             diag_html = (f"<div class='floor-diag'>{d['diag']}</div>"
                          if (sev != "Normal" and d["diag"]) else "")
-            facade = "".join(
-                f"<span class='win {_winclass(sev)}'></span>" for _ in range(6))
             floors_html += (
                 f"<div class='floor {pulse}' style='border-left:6px solid {color}; background:{_tint(sev)};'>"
                 f"<div class='floor-left'>"
