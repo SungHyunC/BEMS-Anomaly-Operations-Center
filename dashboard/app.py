@@ -143,16 +143,27 @@ h1, h2, h3, h4, h5 {{ color: var(--text); letter-spacing: -0.01em; }}
 /* --- KPI cards ------------------------------------------------------ */
 [data-testid="stMetric"] {{
   background: var(--surface); border: 1px solid var(--border);
-  border-radius: 8px; padding: 14px 16px;
-  box-shadow: 0 1px 0 rgba(9,30,66,0.04);
+  border-radius: 10px; padding: 16px 18px 14px 18px;
+  box-shadow: 0 1px 2px rgba(9,30,66,0.05);
+  position: relative; overflow: hidden;
+  transition: box-shadow 0.15s ease, transform 0.15s ease;
+}}
+[data-testid="stMetric"]::before {{
+  content: ""; position: absolute; top: 0; left: 0; right: 0; height: 3px;
+  background: linear-gradient(90deg, var(--primary), var(--accent));
+  opacity: 0.9;
+}}
+[data-testid="stMetric"]:hover {{
+  box-shadow: 0 6px 18px rgba(9,30,66,0.10); transform: translateY(-1px);
 }}
 [data-testid="stMetricValue"] {{
-  font-size: 1.6rem !important; color: var(--text);
-  font-weight: 700; letter-spacing: -0.02em;
+  font-size: 1.75rem !important; color: var(--text);
+  font-weight: 800; letter-spacing: -0.025em;
+  font-variant-numeric: tabular-nums;
 }}
 [data-testid="stMetricLabel"] {{
   color: var(--muted) !important; font-weight: 600 !important;
-  font-size: 0.7rem !important; text-transform: uppercase; letter-spacing: 0.06em;
+  font-size: 0.68rem !important; text-transform: uppercase; letter-spacing: 0.07em;
 }}
 [data-testid="stMetricDelta"] {{ font-size: 0.78rem !important; }}
 
@@ -282,10 +293,31 @@ h1, h2, h3, h4, h5 {{ color: var(--text); letter-spacing: -0.01em; }}
   border: 1px solid var(--border); border-radius: 8px;
 }}
 
+/* --- chart card: wrap plotly charts in a clean panel --------------- */
+[data-testid="stPlotlyChart"] {{
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 10px; padding: 8px 10px 4px 10px;
+  box-shadow: 0 1px 2px rgba(9,30,66,0.04);
+}}
+
+/* --- toggles & sliders accent -------------------------------------- */
+[data-baseweb="checkbox"] [aria-checked="true"] {{ background: var(--primary) !important; }}
+
+/* --- section divider rhythm ---------------------------------------- */
+hr {{ margin: 0.6rem 0 !important; border-color: var(--border) !important; }}
+
+/* --- chart panel label --------------------------------------------- */
+.chart-label {{
+  font-size: 0.82rem; font-weight: 700; color: var(--text2);
+  margin: 2px 0 6px 2px; display: flex; align-items: center; gap: 8px;
+}}
+.chart-label .dot {{ width: 8px; height: 8px; border-radius: 2px; display:inline-block; }}
+
 /* --- hide chrome --------------------------------------------------- */
 footer {{ visibility: hidden; }}
 #MainMenu {{ visibility: hidden; }}
 header[data-testid="stHeader"] {{ background: transparent; }}
+[data-testid="stToolbar"] {{ display: none; }}
 </style>
 """
 st.markdown(CSS, unsafe_allow_html=True)
@@ -407,17 +439,36 @@ def _sidebar() -> dict:
 def _style_axes(fig: go.Figure, height: int = 300) -> go.Figure:
     fig.update_layout(
         height=height,
-        margin={"l": 50, "r": 16, "t": 30, "b": 36},
+        margin={"l": 54, "r": 18, "t": 34, "b": 34},
         paper_bgcolor="white", plot_bgcolor="white",
         font={"color": C_TEXT, "family": "-apple-system, sans-serif", "size": 12},
         xaxis={"gridcolor": PLOT["grid"], "linecolor": PLOT["axis"],
                "zeroline": False, "showspikes": True, "spikecolor": "#cbd5e1",
-               "spikedash": "dot", "spikethickness": 1},
-        yaxis={"gridcolor": PLOT["grid"], "linecolor": PLOT["axis"], "zeroline": False},
+               "spikedash": "dot", "spikethickness": 1, "ticks": "outside",
+               "tickcolor": PLOT["axis"], "ticklen": 4},
+        yaxis={"gridcolor": PLOT["grid"], "linecolor": PLOT["axis"], "zeroline": False,
+               "ticks": "outside", "tickcolor": PLOT["axis"], "ticklen": 4},
         legend={"orientation": "h", "y": -0.22, "x": 0, "bgcolor": "rgba(0,0,0,0)",
                 "font": {"size": 11}},
     )
     return fig
+
+
+def _yrange(values, spec, pad_frac: float = 0.14):
+    """Compute a padded y-range that always includes the sensor's thresholds,
+    so the shaded danger/normal bands render cleanly."""
+    import numpy as np
+    vals = [float(v) for v in values
+            if v is not None and not (isinstance(v, float) and np.isnan(v))]
+    his = [*vals, spec.normal_max]
+    los = [*vals, spec.normal_min]
+    if spec.anomaly_high is not None:
+        his.append(spec.anomaly_high)
+    if spec.anomaly_low is not None:
+        los.append(spec.anomaly_low)
+    hi, lo = max(his), min(los)
+    span = (hi - lo) or 1.0
+    return lo - span * pad_frac, hi + span * pad_frac
 
 
 # ─────────────────────────────────────────────────── tab: Operations
@@ -617,61 +668,122 @@ def tab_operations(stats: dict, decisions: list[dict]) -> None:
 
 
 # ─────────────────────────────────────────────────── tab: Telemetry
-def _sensor_chart(name: str, raw_df: pd.DataFrame, proc_df: pd.DataFrame) -> go.Figure:
+def _sensor_chart(name: str, raw_df: pd.DataFrame, proc_df: pd.DataFrame,
+                  show_raw: bool = True) -> go.Figure:
     spec = SENSORS[name]
     fig = go.Figure()
-    fig.add_hrect(y0=spec.normal_min, y1=spec.normal_max,
-                  fillcolor=PLOT["normal_band"], opacity=0.06, line_width=0)
+
+    # compute a padded y-range so the shaded bands fill the panel cleanly
+    all_vals = []
     if not proc_df.empty:
+        all_vals += proc_df[name].tolist()
+    if show_raw and not raw_df.empty and name in raw_df.columns:
+        all_vals += raw_df[name].tolist()
+    ymin, ymax = _yrange(all_vals, spec)
+
+    # shaded zones: red (danger) outside, green (normal) inside — instant read
+    if spec.anomaly_high is not None:
+        fig.add_hrect(y0=spec.anomaly_high, y1=ymax, fillcolor=C_CRIT,
+                      opacity=0.05, line_width=0, layer="below")
+    if spec.anomaly_low is not None:
+        fig.add_hrect(y0=ymin, y1=spec.anomaly_low, fillcolor=C_CRIT,
+                      opacity=0.05, line_width=0, layer="below")
+    fig.add_hrect(y0=spec.normal_min, y1=spec.normal_max, fillcolor=PLOT["normal_band"],
+                  opacity=0.08, line_width=0, layer="below",
+                  annotation_text="normal", annotation_position="top left",
+                  annotation_font={"size": 9, "color": C_OK})
+
+    # threshold guide lines
+    if spec.anomaly_high is not None:
+        fig.add_hline(y=spec.anomaly_high, line_dash="dot",
+                      line_color=C_CRIT, line_width=1, opacity=0.6)
+    if spec.anomaly_low is not None:
+        fig.add_hline(y=spec.anomaly_low, line_dash="dot",
+                      line_color=C_CRIT, line_width=1, opacity=0.6)
+
+    # raw degraded readings (optional)
+    if show_raw and not raw_df.empty and name in raw_df.columns:
+        fig.add_trace(go.Scatter(
+            x=raw_df["seq"], y=raw_df[name], mode="markers", name="Raw",
+            marker={"color": PLOT["raw"], "size": 4.5, "opacity": 0.5},
+            hovertemplate="seq %{x} · raw %{y:.2f}" + spec.unit + "<extra></extra>",
+        ))
+
+    if not proc_df.empty:
+        # subtle area fill under the recovered line for visual weight
         fig.add_trace(go.Scatter(
             x=proc_df["seq"], y=proc_df[name], mode="lines",
-            name="Interpolated",
-            line={"color": PLOT["interp"], "width": 2, "shape": "spline"},
+            name="Recovered signal", line={"color": PLOT["interp"], "width": 2.4,
+                                           "shape": "spline"},
+            fill="tozeroy", fillcolor="rgba(31,93,222,0.06)",
+            hovertemplate="seq %{x} · %{y:.2f}" + spec.unit + "<extra></extra>",
         ))
+
+        # points the ML Processor actually reconstructed (was dropped in transit)
+        if "was_missing" in proc_df.columns:
+            rec = proc_df[proc_df["was_missing"] == True]   # noqa: E712
+            if not rec.empty:
+                fig.add_trace(go.Scatter(
+                    x=rec["seq"], y=rec[name], mode="markers", name="Recovered point",
+                    marker={"color": "white", "size": 8, "symbol": "diamond",
+                            "line": {"width": 1.6, "color": PLOT["interp"]}},
+                    hovertemplate="seq %{x} · interpolated %{y:.2f}" + spec.unit + "<extra></extra>",
+                ))
+
         z_an = proc_df[proc_df[f"{name}_anom"] == True]   # noqa: E712
         if not z_an.empty:
             fig.add_trace(go.Scatter(
-                x=z_an["seq"], y=z_an[name], mode="markers",
-                name="Z-score / Hard",
-                marker={"color": PLOT["z_anom"], "size": 11, "symbol": "x",
-                        "line": {"width": 2, "color": PLOT["z_anom"]}},
+                x=z_an["seq"], y=z_an[name], mode="markers", name="Z-score / Hard",
+                marker={"color": C_CRIT, "size": 11, "symbol": "x",
+                        "line": {"width": 2.2, "color": C_CRIT}},
+                hovertemplate="seq %{x} · ANOMALY %{y:.2f}" + spec.unit + "<extra></extra>",
             ))
         if_an = proc_df[proc_df["iforest_anom"] == True]  # noqa: E712
         if not if_an.empty:
             fig.add_trace(go.Scatter(
-                x=if_an["seq"], y=if_an[name], mode="markers",
-                name="IsolationForest",
-                marker={"color": PLOT["iforest"], "size": 10,
-                        "symbol": "circle-open", "line": {"width": 2}},
+                x=if_an["seq"], y=if_an[name], mode="markers", name="IsolationForest",
+                marker={"color": C_ACCENT, "size": 12, "symbol": "circle-open",
+                        "line": {"width": 2.2}},
+                hovertemplate="seq %{x} · IForest %{y:.2f}" + spec.unit + "<extra></extra>",
             ))
-    if not raw_df.empty and name in raw_df.columns:
+
+        # last value badge — colored by whether the latest reading is anomalous
+        last = proc_df.iloc[-1]
+        last_anom = bool(last.get(f"{name}_anom") or last.get("iforest_anom"))
+        dot_color = C_CRIT if last_anom else C_OK
         fig.add_trace(go.Scatter(
-            x=raw_df["seq"], y=raw_df[name], mode="markers",
-            name="Raw",
-            marker={"color": PLOT["raw"], "size": 5, "opacity": 0.6},
+            x=[last["seq"]], y=[last[name]], mode="markers",
+            marker={"color": dot_color, "size": 11, "line": {"width": 2, "color": "white"}},
+            showlegend=False, hoverinfo="skip",
         ))
-    if spec.anomaly_high is not None:
-        fig.add_hline(y=spec.anomaly_high, line_dash="dot",
-                      line_color=PLOT["z_anom"], line_width=1.2)
-    if spec.anomaly_low is not None:
-        fig.add_hline(y=spec.anomaly_low, line_dash="dot",
-                      line_color=PLOT["z_anom"], line_width=1.2)
-    fig.update_layout(title={
-        "text": f"<b>{name.title()}</b> <span style='color:{C_MUTED};font-weight:400;'>({spec.unit})</span>",
-        "font": {"size": 13, "color": C_TEXT}, "x": 0.01, "y": 0.97,
-    })
-    fig.update_yaxes(title_text=spec.unit)
-    fig.update_xaxes(title_text="seq")
-    return _style_axes(fig, height=290)
+        fig.add_annotation(
+            x=last["seq"], y=last[name], text=f"<b>{last[name]:.1f}</b>",
+            showarrow=False, xanchor="left", xshift=10, yshift=0,
+            font={"size": 11, "color": dot_color}, bgcolor="white",
+            bordercolor=dot_color, borderwidth=1, borderpad=2,
+        )
+
+    fig.update_layout(
+        title={"text": f"<b>{name.title()}</b> <span style='color:{C_MUTED};font-weight:400;'>· {spec.unit}</span>",
+               "font": {"size": 13, "color": C_TEXT}, "x": 0.01, "y": 0.97},
+        hovermode="x unified",
+        hoverlabel={"bgcolor": "white", "bordercolor": C_BORDER, "font": {"size": 11}},
+    )
+    fig.update_yaxes(title_text="", range=[ymin, ymax])
+    fig.update_xaxes(title_text="sequence")
+    return _style_axes(fig, height=300)
 
 
 def tab_telemetry(zones_seen: list[str]) -> None:
     if not zones_seen:
         st.info("No telemetry has arrived yet.")
         return
-    bar = st.columns([1.2, 4])
+    bar = st.columns([1.4, 1.2, 2.4])
     with bar[0]:
         zone = st.selectbox("Zone", zones_seen, key="tel_zone")
+    with bar[1]:
+        show_raw = st.toggle("Show raw points", value=True, key="tel_show_raw",
+                             help="Gray dots are the degraded readings before ML recovery.")
     raw = _get("/raw", zone=zone, last_n=200)
     proc = _get("/processed", zone=zone, last_n=200)
 
@@ -681,8 +793,8 @@ def tab_telemetry(zones_seen: list[str]) -> None:
 
     k = st.columns(4)
     k[0].metric("Raw points",        len(raw_df))
-    k[1].metric("Interpolated rows", len(proc_df))
-    k[2].metric("Missing in window", len(raw.get("missing_seqs", [])))
+    k[1].metric("Recovered rows",    len(proc_df))
+    k[2].metric("Packets dropped",   len(raw.get("missing_seqs", [])))
     n_anom = int(proc_df.get("anomaly_any", pd.Series(dtype=bool)).sum()) if not proc_df.empty else 0
     k[3].metric("Flagged anomalies", n_anom)
 
@@ -692,18 +804,37 @@ def tab_telemetry(zones_seen: list[str]) -> None:
             f"<div style='margin-top:14px; padding:10px 14px; background:{C_WARN_BG}; "
             f"border:1px solid #f3d9a8; border-radius:6px; color:{C_WARN}; font-size:0.85rem;'>"
             f"<b>Packet loss detected</b> — {len(missing)} sequence(s) dropped; "
-            f"the ML Processor has interpolated them. "
+            f"the ML Processor reconstructed them (shown as hollow diamonds). "
             f"Recent gaps: <code style='background:white; color:{C_WARN};'>{missing[-20:]}</code>"
             f"</div>",
             unsafe_allow_html=True,
         )
 
-    st.markdown("<br>", unsafe_allow_html=True)
+    # legend key — explains every glyph once, so the charts stay uncluttered
+    st.markdown(
+        f"<div style='margin:14px 0 6px 0; display:flex; gap:18px; flex-wrap:wrap; "
+        f"font-size:0.78rem; color:{C_TEXT2};'>"
+        f"<span><span style='display:inline-block;width:18px;height:3px;background:{C_PRIMARY};"
+        f"vertical-align:middle;margin-right:5px;'></span>Recovered signal</span>"
+        f"<span><span style='color:{C_PRIMARY};'>◇</span> Reconstructed point</span>"
+        f"<span><span style='color:{C_CRIT};'>✕</span> Z-score / hard breach</span>"
+        f"<span><span style='color:{C_ACCENT};'>○</span> IsolationForest</span>"
+        f"<span><span style='display:inline-block;width:12px;height:10px;"
+        f"background:{PLOT['normal_band']};opacity:0.25;vertical-align:middle;margin-right:4px;'></span>"
+        f"Normal band</span>"
+        f"<span><span style='display:inline-block;width:12px;height:10px;"
+        f"background:{C_CRIT};opacity:0.18;vertical-align:middle;margin-right:4px;'></span>"
+        f"Danger zone</span>"
+        f"</div>",
+        unsafe_allow_html=True,
+    )
+
     cols = st.columns(2)
     for i, name in enumerate(SENSOR_NAMES):
         with cols[i % 2]:
-            st.plotly_chart(_sensor_chart(name, raw_df, proc_df),
-                            use_container_width=True, key=f"tel_{zone}_{name}")
+            fig = _sensor_chart(name, raw_df, proc_df, show_raw=show_raw)
+            fig.update_layout(showlegend=False)  # shared legend above replaces per-chart
+            st.plotly_chart(fig, use_container_width=True, key=f"tel_{zone}_{name}")
 
 
 # ─────────────────────────────────────────────────── tab: Pipeline
@@ -1021,14 +1152,17 @@ def tab_metrics(zones_seen: list[str]) -> None:
         "the ML Processor actually had to reconstruct.</div>",
         unsafe_allow_html=True,
     )
+    per_sensor = interp.get("per_sensor") or {}
+    avg_mae = (sum(v["mae_recovered_only"] for v in per_sensor.values()) / len(per_sensor)
+               if per_sensor else 0.0)
     k = st.columns(3)
-    k[0].metric("Truth rows",      interp.get("n_truth", 0))
-    k[1].metric("Recovered gaps",  interp.get("n_missing", 0))
-    k[2].metric("Per-sensor MAE shown below", "")
+    k[0].metric("Truth rows",          interp.get("n_truth", 0))
+    k[1].metric("Recovered gaps",      interp.get("n_missing", 0))
+    k[2].metric("Avg recovery MAE",    f"{avg_mae:.2f}")
 
-    if interp.get("per_sensor"):
+    if per_sensor:
         rows = []
-        for name, v in interp["per_sensor"].items():
+        for name, v in per_sensor.items():
             spec = SENSORS[name]
             rows.append({
                 "Sensor":            f"{name} ({spec.unit})",
@@ -1065,22 +1199,54 @@ def tab_metrics(zones_seen: list[str]) -> None:
             "TP": m["tp"], "FP": m["fp"], "FN": m["fn"], "TN": m["tn"],
         })
     df = pd.DataFrame(rows)
-    st.dataframe(df, use_container_width=True, hide_index=True)
 
-    st.markdown("<br>", unsafe_allow_html=True)
-    det_colors = {
-        "zscore":         C_PRIMARY, "hard_threshold": C_CRIT,
-        "iforest":        C_ACCENT,  "union":          C_OK,
-    }
-    fig = px.bar(df, x="Detector", y="F1", color="Detector",
-                 color_discrete_map=det_colors, range_y=[0, 1], text="F1")
-    fig.update_traces(textposition="outside",
-                      marker={"line": {"width": 0}},
-                      textfont={"color": C_TEXT, "size": 12})
-    _style_axes(fig, height=320)
-    fig.update_layout(showlegend=False)
-    fig.update_xaxes(title_text="")
-    st.plotly_chart(fig, use_container_width=True)
+    chart_col, table_col = st.columns([1.4, 1])
+
+    with chart_col:
+        st.markdown("<div class='chart-label'>Precision · Recall · F1 by detector</div>",
+                    unsafe_allow_html=True)
+        melted = df.melt(id_vars="Detector", value_vars=["Precision", "Recall", "F1"],
+                         var_name="Metric", value_name="Score")
+        metric_colors = {"Precision": C_PRIMARY, "Recall": C_ACCENT, "F1": C_OK}
+        fig = px.bar(melted, x="Detector", y="Score", color="Metric",
+                     barmode="group", range_y=[0, 1.08],
+                     color_discrete_map=metric_colors, text="Score")
+        fig.update_traces(textposition="outside", texttemplate="%{text:.2f}",
+                          marker={"line": {"width": 0}},
+                          textfont={"color": C_TEXT, "size": 10}, cliponaxis=False)
+        _style_axes(fig, height=360)
+        fig.update_layout(
+            legend={"orientation": "h", "y": 1.12, "x": 0, "title": "",
+                    "font": {"size": 11}},
+            bargap=0.28, bargroupgap=0.08,
+        )
+        fig.update_xaxes(title_text="")
+        fig.update_yaxes(title_text="score")
+        st.plotly_chart(fig, use_container_width=True)
+
+    with table_col:
+        st.markdown("<div class='chart-label'>Confusion counts</div>",
+                    unsafe_allow_html=True)
+        st.dataframe(
+            df[["Detector", "Precision", "Recall", "F1", "TP", "FP", "FN", "TN"]],
+            use_container_width=True, hide_index=True,
+            column_config={
+                "Precision": st.column_config.ProgressColumn(
+                    "Precision", min_value=0, max_value=1, format="%.2f"),
+                "Recall": st.column_config.ProgressColumn(
+                    "Recall", min_value=0, max_value=1, format="%.2f"),
+                "F1": st.column_config.ProgressColumn(
+                    "F1", min_value=0, max_value=1, format="%.2f"),
+            },
+        )
+        best = df.loc[df["F1"].idxmax()]
+        st.markdown(
+            f"<div style='margin-top:8px; padding:10px 14px; background:{C_OK_BG}; "
+            f"border:1px solid #c2e5d3; border-radius:6px; font-size:0.82rem; color:{C_TEXT};'>"
+            f"Best F1: <b>{best['Detector']}</b> at <b>{best['F1']:.2f}</b> — the "
+            f"<code>union</code> combines all three detectors' strengths.</div>",
+            unsafe_allow_html=True,
+        )
 
 
 # ─────────────────────────────────────────────────────────────── main
