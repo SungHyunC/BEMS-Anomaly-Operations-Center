@@ -652,35 +652,10 @@ hr {{ margin: 0.6rem 0 !important; border-color: var(--border) !important; }}
 .pm.bad {{ color: #b91c1c; font-weight: 700; }}
 .plan-room.crit {{ animation: floorpulse 1.7s ease-in-out infinite; }}
 
-/* --- hide chrome --------------------------------------------------- */
+/* --- hide chrome (minimal — never touch the header or sidebar controls,
+       so Streamlit's native collapse/expand arrow keeps working) ------- */
 footer {{ visibility: hidden; }}
 #MainMenu {{ visibility: hidden; }}
-header[data-testid="stHeader"] {{ background: transparent; }}
-[data-testid="stToolbar"] {{ display: none; }}
-
-/* keep the sidebar EXPAND control visible & clickable after collapsing.
-   Streamlit renames this testid between versions, so cover all known ones. */
-[data-testid="stSidebarCollapsedControl"],
-[data-testid="collapsedControl"],
-[data-testid="stExpandSidebarButton"],
-[data-testid="stSidebarCollapseButton"] {{
-  visibility: visible !important;
-  opacity: 1 !important;
-  display: flex !important;
-  z-index: 1002 !important;
-}}
-[data-testid="stSidebarCollapsedControl"] button,
-[data-testid="collapsedControl"] button,
-[data-testid="stExpandSidebarButton"] button,
-[data-testid="stExpandSidebarButton"] {{
-  background: var(--surface) !important;
-  border: 1px solid var(--border2) !important;
-  border-radius: 8px !important;
-  color: var(--primary) !important;
-  box-shadow: 0 2px 6px rgba(9,30,66,0.18) !important;
-}}
-/* keep the header bar present (it hosts the expand control) and on top */
-header[data-testid="stHeader"] {{ z-index: 1001 !important; pointer-events: auto !important; }}
 </style>
 """
 st.markdown(CSS, unsafe_allow_html=True)
