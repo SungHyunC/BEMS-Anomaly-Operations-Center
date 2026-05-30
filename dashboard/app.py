@@ -1725,9 +1725,6 @@ def tab_building(zones_seen: list[str]) -> None:
     def _tint(sev):
         return {"Normal": C_SURFACE, "Warning": "#fff8ec", "Critical": "#fdeeec"}.get(sev, C_SURFACE)
 
-    def _winclass(sev):
-        return "crit" if sev == "Critical" else "lit"
-
     if is_plan:
         # ── top-down floor plan: each zone is a room in the building footprint
         rooms = ""
@@ -1736,7 +1733,6 @@ def tab_building(zones_seen: list[str]) -> None:
             color = SEVERITY_COLOR.get(sev, C_OK)
             kind = {"Critical": "crit", "Warning": "warn", "Normal": "ok"}.get(sev, "ok")
             pulse = "crit" if sev == "Critical" else ""
-            wins = "".join(f"<span class='rwin {_winclass(sev)}'></span>" for _ in range(5))
             metrics = ""
             for name in SENSOR_NAMES:
                 bad = bool(row.get(f"{name}_anom"))
@@ -1749,7 +1745,6 @@ def tab_building(zones_seen: list[str]) -> None:
                          if (sev != "Normal" and d["diag"]) else "")
             rooms += (
                 f"<div class='plan-room {pulse}' style='border-top:6px solid {color}; background:{_tint(sev)};'>"
-                f"<div class='room-windows'>{wins}</div>"
                 f"<div class='room-name'>{z}</div>"
                 f"<div class='room-fn'>{label}</div>"
                 f"{_pill(kind, sev)}{diag_html}"
@@ -1784,7 +1779,6 @@ def tab_building(zones_seen: list[str]) -> None:
                 f"{_pill(kind, sev)}{diag_html}"
                 f"</div>"
                 f"<div class='floor-sensors'>{chips}</div>"
-                f"<div class='facade'>{facade}</div>"
                 f"</div>"
             )
         st.markdown(
