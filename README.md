@@ -1,5 +1,7 @@
 # BEMS Anomaly Operations Center
 
+**🌐 Language:** **English** · [한국어](README.ko.md)
+
 > ICT Module 4 — Intermediate Project
 > **Smart Building Energy Anomaly Detection & Response System**
 > Kim Sung-hyun · 2021271250 · Individual Project
