@@ -60,6 +60,13 @@ class PipelineConfig:
     anomaly_injection_rate: float = 0.04
     decision_worker_interval_s: float = 1.0
     db_path: str = str(ROOT / "data" / "bems.sqlite3")
+    # Telemetry transport for the field/sensor plane:
+    #   "udp"  = connectionless datagrams on BACnet/IP's port (realistic; lossy)
+    #   "rest" = HTTP POST /ingest (reliable fallback)
+    # The management/API plane (dashboard, evaluation, inject) always stays REST.
+    transport: str = "udp"
+    udp_host: str = "127.0.0.1"
+    udp_port: int = 47808            # BACnet/IP standard UDP port
 
     @property
     def collector_url(self) -> str:

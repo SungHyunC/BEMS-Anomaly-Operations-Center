@@ -130,19 +130,27 @@ class DecisionWorker:
 
 # ---------------------------------------------------------------- app & state
 worker: DecisionWorker | None = None
+udp_server = None  # UDP telemetry listener (BACnet/IP-style field plane)
 
 
 @asynccontextmanager
 async def _lifespan(app: FastAPI):
-    global worker
+    global worker, udp_server
     store = get_store()
     worker = DecisionWorker(store)
     worker.start()
+    # realistic field plane: receive sensor datagrams over UDP
+    if PIPELINE.transport == "udp":
+        from src.agents.udp_link import UDPTelemetryServer
+        udp_server = UDPTelemetryServer()
+        udp_server.start()
     try:
         yield
     finally:
         if worker:
             worker.stop()
+        if udp_server is not None:
+            udp_server.stop()
 
 
 app = FastAPI(
