@@ -218,7 +218,7 @@ const TOTAL = 14;
     ["06", "Stage 4  ML Processor",  "Interpolation + 3-detector ensemble"],
     ["07", "Stage 5  Decision",      "Deterministic rule engine"],
     ["08", "Stage 6  Dashboard",     "Enterprise operations console"],
-    ["09", "Key Capabilities",          "What You Can Do With It"],
+    ["09", "Key Capabilities",          "What the system can do"],
     ["10", "Conclusion + Future Work",        "Results and next steps"],
   ];
   const colW = (W - 2 * MARGIN - 0.4) / 2;
@@ -311,7 +311,7 @@ const TOTAL = 14;
     x: rx + 0.3, y: 2.4, w: colW - 0.4, h: 0.4,
     fontFace: FONT, fontSize: 16, color: C.text, bold: true, margin: 0,
   });
-  s.addText("Six-Stage Agent Pipeline — 실제 Network degradation를 의도적으로 주입하고, ML로 Recover하고, 룰 엔진으로 Diagnose합니다.", {
+  s.addText("A six-stage agent pipeline — deliberately inject network degradation, recover with ML, diagnose with a rule engine.", {
     x: rx + 0.3, y: 2.85, w: colW - 0.5, h: 0.7,
     fontFace: FONT, fontSize: 12, color: C.text2, margin: 0,
   });
@@ -320,7 +320,7 @@ const TOTAL = 14;
     ["✓", "Recover",     "Linear interpolation fills dropped sequences for a gapless series"],
     ["✓", "Detect",     "Z-score · hard threshold · IsolationForest — a 3-detector ensemble"],
     ["✓", "Diagnose",     "Match the fired-sensor pattern to 9 rules to infer root cause"],
-    ["✓", "Operate",     "Streamlit 콘솔 — 6탭 Operate 화면과 시나리오 주입 기능"],
+    ["✓", "Operate",     "Streamlit console — 6-tab operations view with scenario injection"],
   ];
   solutions.forEach((p, i) => {
     const y = 3.7 + i * 0.62;
@@ -354,9 +354,9 @@ const TOTAL = 14;
     { n: "①", name: "Generator",    role: "Sensor simulation",     color: C.primary },
     { n: "②", name: "Transmitter",  role: "Network degradation",       color: C.primary },
     { n: "③", name: "Collector",    role: "FastAPI hub + DB",   color: C.accent  },
-    { n: "④", name: "ML Processor", role: "보간 + 이상 Detect",    color: C.accent  },
-    { n: "⑤", name: "Decision",     role: "룰 엔진 Diagnose",        color: C.ok      },
-    { n: "⑥", name: "Dashboard",    role: "Operate 콘솔",           color: C.ok      },
+    { n: "④", name: "ML Processor", role: "Interpolate + detect",    color: C.accent  },
+    { n: "⑤", name: "Decision",     role: "Rule-engine diagnosis",        color: C.ok      },
+    { n: "⑥", name: "Dashboard",    role: "Operations console",           color: C.ok      },
   ];
 
   const stageW = 1.85, stageH = 1.5;
@@ -684,12 +684,12 @@ const TOTAL = 14;
     ["POST", "/truth",       "Generator's clean sample (for evaluation)",        "accent"],
     ["POST", "/ingest",      "Transmitter's degraded packet",              "info"],
     ["POST", "/inject",      "User scenario or custom sample",        "info"],
-    ["POST", "/reset",       "Operate 저장소 초기화",                     "crit"],
+    ["POST", "/reset",       "Reset the operational store",                     "crit"],
     ["GET",  "/raw",         "Buffered readings + missing-seq list",     "ok"],
-    ["GET",  "/processed",   "ML Recover + 이상 플래그 프레임",            "ok"],
+    ["GET",  "/processed",   "ML-recovered + anomaly-flagged frame",            "ok"],
     ["GET",  "/decisions",   "Severity + diagnosis + action history",  "ok"],
     ["GET",  "/stats",       "Per-zone packet stats + worker state",            "ok"],
-    ["GET",  "/evaluation",  "보간 MAE + Detect P/R/F1",                  "ok"],
+    ["GET",  "/evaluation",  "Interpolation MAE + detection P/R/F1",                  "ok"],
     ["GET",  "/scenarios",   "Preset scenario library",              "ok"],
     ["GET",  "/health",      "Liveness probe",                       "ok"],
   ];
@@ -1007,7 +1007,7 @@ const TOTAL = 14;
       color: C.primary, bg: C.primaryBg, icon: "📈" },
     { num: "03", name: "Pipeline",      desc: "6-agent topology · each agent's status / KPIs / role / source file",
       color: C.accent,  bg: C.accentBg,  icon: "◆" },
-    { num: "04", name: "Alerts",        desc: "Severity · zone 필터 · Diagnose/권고/증거 컬럼 · CSV 내보내기",
+    { num: "04", name: "Alerts",        desc: "Severity · zone filters · diagnosis/action/evidence columns · CSV export",
       color: C.crit,    bg: C.critBg,    icon: "🚨" },
     { num: "05", name: "Scenario Lab",  desc: "One-click inject of 5 presets · custom sensor-value form · recent injections",
       color: C.ok,      bg: C.okBg,      icon: "🧪" },
@@ -1387,18 +1387,18 @@ const TOTAL = 14;
 // ════════════════════════════════════════════════════════════════════
 {
   const s = pres.addSlide(); lightBg(s);
-  pageHeader(s, "09  ·  CAPABILITIES", "What You Can Do With It",
+  pageHeader(s, "09  ·  CAPABILITIES", "What the system can do",
              "Eight things a user can actually do");
 
   const caps = [
     ["📡", "Real-time monitoring",        "Watch 4-sensor data across 3 zones on 1-second live charts"],
-    ["📦", "Packet Loss Recover",         "Auto-interpolate the 10% dropped sequences to remove gaps"],
-    ["🔍", "다중 Detect기 비교",       "Apply Z-score · hard threshold · IsolationForest together and compare"],
-    ["🧠", "Automatic root-cause inference",     "9개 룰을 매칭하여 어떤 유형의 사고인지 Diagnose + 권고 조치 출력"],
-    ["🧪", "시나리오 주입 Testing",   "One-click 5 presets (fire/HVAC/peak/cold/occupancy), or enter custom values"],
+    ["📦", "Packet-loss recovery",         "Auto-interpolate the 10% dropped sequences to remove gaps"],
+    ["🔍", "Multi-detector comparison",       "Apply Z-score · hard threshold · IsolationForest together and compare"],
+    ["🧠", "Automatic root-cause inference",     "Match 9 rules to diagnose the event type and output a recommended action"],
+    ["🧪", "Scenario injection testing",   "One-click 5 presets (fire/HVAC/peak/cold/occupancy), or enter custom values"],
     ["📐", "Quantitative quality evaluation",       "Compare interpolation MAE and each detector's P/R/F1 against ground truth"],
-    ["📤", "Alert export",          "필터링한 알림 목록을 CSV로 다운로드 (Operate 보고서 생성)"],
-    ["🗄", "데이터 Persistence 및 리셋",   "SQLite keeps history across restarts; one-click reset in the sidebar"],
+    ["📤", "Alert export",          "Download the filtered alert list as CSV (operations report)"],
+    ["🗄", "Data persistence & reset",   "SQLite keeps history across restarts; one-click reset in the sidebar"],
   ];
   const cw = (W - 2 * MARGIN - 0.4) / 2;
   caps.forEach((c, i) => {
@@ -1464,12 +1464,12 @@ const TOTAL = 14;
     fontFace: FONT, fontSize: 17, color: C.white, bold: true, margin: 0,
   });
   const achieved = [
-    "Six-Stage Agent Pipeline — 모두 독립 프로세스로 분리",
-    "10% Packet Loss + 0.2–1.5s 지연 환경에서 시계열 무결성 유지",
+    "Six-stage agent pipeline — every stage an independent process",
+    "Keeps the series intact under 10% packet loss + 0.2–1.5 s delay",
     "3-detector ensemble catches both univariate and multivariate anomalies",
-    "9개 룰 엔진으로 결정론적·감사 가능한 Diagnose (블랙박스 X)",
-    "엔터프라이즈 톤의 6탭 Operate 콘솔",
-    "Pytest 24개 — 데드락 회귀 Testing 포함",
+    "9-rule engine — deterministic, auditable diagnosis (no black box)",
+    "Enterprise-style 6-tab operations console",
+    "24 pytest cases — including a deadlock regression test",
     "Built-in P/R/F1 evaluation against ground-truth labels",
   ];
   achieved.forEach((t, i) => {
