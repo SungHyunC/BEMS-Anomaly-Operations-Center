@@ -1,0 +1,23 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+
+# Project
+.env
+logs/
+data/bems.sqlite3
+data/bems.sqlite3-*
+
+# Build artefacts
+BEMS_Presentation.pdf
+slide-*.jpg
+node_modules/
+
+# OS / IDE / agent harnesses
+.DS_Store
+.vscode/
+.idea/
+.claude/
