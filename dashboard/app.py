@@ -1328,6 +1328,61 @@ def tab_alerts(decisions: list[dict]) -> None:
 
 
 # ─────────────────────────────────────────────────── tab: Scenario Lab
+def _classify_value(name: str, v: float) -> str:
+    """'crit' if past a hard limit, 'warn' if outside comfort, else 'ok'."""
+    spec = SENSORS[name]
+    if spec.anomaly_high is not None and v > spec.anomaly_high:
+        return "crit"
+    if spec.anomaly_low is not None and v < spec.anomaly_low:
+        return "crit"
+    if v < spec.normal_min or v > spec.normal_max:
+        return "warn"
+    return "ok"
+
+
+def _predict_severity(readings: dict) -> str:
+    """Mirror the Decision Agent's hard-threshold rule for an instant preview."""
+    for name, v in readings.items():
+        spec = SENSORS[name]
+        if spec.anomaly_high is not None and v > spec.anomaly_high:
+            return "Critical"
+        if spec.anomaly_low is not None and v < spec.anomaly_low:
+            return "Critical"
+    return "Normal"
+
+
+def _result_card(zone: str, seq: int) -> None:
+    """Show the decision the pipeline produced for a just-injected sample."""
+    recs = _get("/decisions", zone=zone, last_n=20).get("records", [])
+    match = next((r for r in recs if r.get("seq") == seq), None)
+    if not match:
+        st.markdown(
+            f"<div style='padding:12px 16px; background:{C_SURFACE2}; border:1px solid {C_BORDER}; "
+            f"border-radius:8px; color:{C_MUTED}; font-size:0.88rem;'>⏳ {t('result_wait')}</div>",
+            unsafe_allow_html=True)
+        return
+    sev = match["severity"]
+    color = SEVERITY_COLOR.get(sev, C_MUTED)
+    kind = {"Critical": "crit", "Warning": "warn", "Normal": "ok"}.get(sev, "ok")
+    chips = " ".join(
+        f"<span class='pill pill-muted' style='font-size:0.7rem;'>"
+        f"{tt['sensor']}={tt['value']}{tt['unit']} (z={tt['z']})</span>"
+        for tt in (match.get("triggered") or [])
+    )
+    st.markdown(
+        f"<div style='padding:14px 18px; background:{C_SURFACE}; border:1px solid {C_BORDER}; "
+        f"border-left:5px solid {color}; border-radius:10px; box-shadow:0 1px 2px rgba(9,30,66,0.05);'>"
+        f"<div style='font-size:0.72rem; color:{C_MUTED}; text-transform:uppercase; "
+        f"letter-spacing:0.06em; font-weight:700;'>{t('result_title')} · {zone} · seq {seq}</div>"
+        f"<div style='margin:6px 0;'>{_pill(kind, sev)} "
+        f"<b style='color:{C_TEXT};'>{match.get('diagnosis','—')}</b></div>"
+        f"<div style='color:{C_TEXT2}; font-size:0.86rem; margin-bottom:6px;'>"
+        f"<b>{t('rec_action')}</b> {match.get('action','—')}</div>"
+        f"<div>{chips}</div></div>",
+        unsafe_allow_html=True,
+    )
+
+
 def tab_scenario_lab(scenarios_resp: dict, zones_seen: list[str]) -> None:
     st.markdown(f"<div class='section-title'>{t('ci_title')}</div>", unsafe_allow_html=True)
     st.markdown(f"<div class='section-sub'>{t('ci_sub')}</div>", unsafe_allow_html=True)
@@ -1335,9 +1390,15 @@ def tab_scenario_lab(scenarios_resp: dict, zones_seen: list[str]) -> None:
     scenarios = scenarios_resp.get("scenarios", [])
     zones_for_inject = ZONE_NAMES
 
+    # ── result of the most recent injection, shown right at the top
+    last = st.session_state.get("lab_last_inject")
+    if last:
+        _result_card(last["zone"], last["seq"])
+        st.markdown("<br>", unsafe_allow_html=True)
+
     st.markdown(
         f"<div style='font-weight:700; color:{C_TEXT}; margin:4px 0 10px 0; font-size:0.92rem;'>"
-        f"{t('preset_scenarios')}</div>", unsafe_allow_html=True)
+        f"1 · {t('preset_scenarios')}</div>", unsafe_allow_html=True)
 
     rows = [scenarios[i:i + 3] for i in range(0, len(scenarios), 3)]
     for row in rows:
@@ -1361,36 +1422,76 @@ def tab_scenario_lab(scenarios_resp: dict, zones_seen: list[str]) -> None:
                     res = _post("/inject", json={
                         "zone": zone, "scenario": sc["tag"], "label_as_anomaly": True})
                     if res.get("ok"):
-                        st.success(t("inject_success", tag=sc["tag"], zone=zone,
-                                     seq=res.get("seq"),
-                                     s=f"{PIPELINE.decision_worker_interval_s:.0f}"))
+                        st.session_state["lab_last_inject"] = {
+                            "zone": zone, "seq": res.get("seq")}
+                        st.rerun()
+
+    st.markdown("<br>", unsafe_allow_html=True)
+    st.markdown(
+        f"<div style='font-weight:700; color:{C_TEXT}; margin:4px 0 4px 0; font-size:0.92rem;'>"
+        f"2 · {t('custom_sample')}</div>", unsafe_allow_html=True)
+
+    cz, cl = st.columns([1, 1])
+    zone = cz.selectbox(t("sel_zone"), zones_for_inject, key="manual_zone")
+    label = cl.checkbox(t("label_anomaly"), value=True)
+
+    SLIDER = {
+        "power":       (0.0, 16.0, 2.5, 0.1),
+        "temperature": (0.0, 50.0, 23.0, 0.5),
+        "humidity":    (0.0, 100.0, 50.0, 1.0),
+        "co2":         (300.0, 2500.0, 600.0, 10.0),
+    }
+    cols = st.columns(4)
+    vals: dict[str, float] = {}
+    for i, name in enumerate(SENSOR_NAMES):
+        spec = SENSORS[name]
+        lo, hi, default, step = SLIDER[name]
+        with cols[i]:
+            vals[name] = st.slider(f"{name.title()} ({spec.unit})", lo, hi, default, step,
+                                   key=f"sld_{name}")
+
+    # live preview chips that recolor as the sliders move
+    prev = ""
+    for name in SENSOR_NAMES:
+        spec = SENSORS[name]; v = vals[name]
+        kind = _classify_value(name, v)
+        c = {"ok": C_OK, "warn": C_WARN, "crit": C_CRIT}[kind]
+        bg = {"ok": C_OK_BG, "warn": C_WARN_BG, "crit": C_CRIT_BG}[kind]
+        hi_txt = "—" if spec.anomaly_high is None else f">{spec.anomaly_high}"
+        lo_txt = "" if spec.anomaly_low is None else f" / <{spec.anomaly_low}"
+        prev += (
+            f"<div style='flex:1; min-width:150px; padding:9px 12px; border-radius:9px; "
+            f"background:{bg}; border:1px solid {c}33;'>"
+            f"<div style='font-size:0.66rem; color:{C_MUTED}; text-transform:uppercase; "
+            f"letter-spacing:0.05em; font-weight:700;'>{name}</div>"
+            f"<div style='font-size:1.15rem; font-weight:800; color:{c};'>{v:g}"
+            f"<span style='font-size:0.72rem; color:{C_MUTED}; font-weight:600;'> {spec.unit}</span></div>"
+            f"<div style='font-size:0.66rem; color:{C_MUTED};'>"
+            f"{t('norm_label', lo=spec.normal_min, hi=spec.normal_max, u=spec.unit)} · "
+            f"limit {hi_txt}{lo_txt}</div></div>"
+        )
+    pred = _predict_severity(vals)
+    pkind = {"Critical": "crit", "Warning": "warn", "Normal": "ok"}.get(pred, "ok")
+    st.markdown(
+        f"<div style='font-size:0.78rem; color:{C_MUTED}; margin:8px 0 6px 0;'>{t('preview')}</div>"
+        f"<div style='display:flex; gap:10px; flex-wrap:wrap;'>{prev}</div>"
+        f"<div style='margin-top:10px; font-size:0.9rem;'>{t('expected_sev')}: {_pill(pkind, pred)}</div>",
+        unsafe_allow_html=True,
+    )
+    st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
+    if st.button(t("inject_custom"), type="primary", key="manual_inject_btn"):
+        res = _post("/inject", json={
+            "zone": zone,
+            "readings": {k: float(v) for k, v in vals.items()},
+            "label_as_anomaly": bool(label)})
+        if res.get("ok"):
+            st.session_state["lab_last_inject"] = {"zone": zone, "seq": res.get("seq")}
+            st.rerun()
 
     st.markdown("<br>", unsafe_allow_html=True)
     st.markdown(
         f"<div style='font-weight:700; color:{C_TEXT}; margin:4px 0 10px 0; font-size:0.92rem;'>"
-        f"{t('custom_sample')}</div>", unsafe_allow_html=True)
-    with st.form("manual_inject", clear_on_submit=False, border=True):
-        cz, cl = st.columns([1, 1])
-        zone = cz.selectbox(t("sel_zone"), zones_for_inject, key="manual_zone")
-        label = cl.checkbox(t("label_anomaly"), value=True)
-        c1, c2, c3, c4 = st.columns(4)
-        power = c1.number_input("Power (kW)",       value=2.5,  step=0.5,  format="%.2f")
-        temp  = c2.number_input("Temperature (°C)", value=23.0, step=0.5,  format="%.2f")
-        hum   = c3.number_input("Humidity (%)",     value=50.0, step=1.0,  format="%.2f")
-        co2   = c4.number_input("CO₂ (ppm)",        value=600,  step=20)
-        if st.form_submit_button(t("inject_custom"), type="primary"):
-            res = _post("/inject", json={
-                "zone": zone,
-                "readings": {"power": float(power), "temperature": float(temp),
-                             "humidity": float(hum), "co2": float(co2)},
-                "label_as_anomaly": bool(label)})
-            if res.get("ok"):
-                st.success(t("inject_custom_ok", zone=zone, seq=res.get("seq")))
-
-    st.markdown("<br>", unsafe_allow_html=True)
-    st.markdown(
-        f"<div style='font-weight:700; color:{C_TEXT}; margin:4px 0 10px 0; font-size:0.92rem;'>"
-        f"{t('recent_injections')}</div>", unsafe_allow_html=True)
+        f"3 · {t('recent_injections')}</div>", unsafe_allow_html=True)
     seen = (zones_seen or zones_for_inject)
     rows2: list[dict] = []
     for z in seen:
