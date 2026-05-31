@@ -16,10 +16,7 @@ multi-tab Streamlit operations console.
 
 ## 🎥  Demo Video
 
-**Watch (unlisted): _<TO BE FILLED IN AFTER RECORDING>_**
-
-> Replace this placeholder with the YouTube **Unlisted** link
-> (or Google Drive **View-Only** link) before submitting the GitHub URL.
+**Watch (unlisted): https://www.youtube.com/watch?v=RMszTL3nexo**
 
 ---
 
