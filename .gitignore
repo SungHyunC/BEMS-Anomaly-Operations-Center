@@ -13,8 +13,19 @@ data/bems.sqlite3-*
 
 # Build artefacts
 BEMS_Presentation.pdf
+BEMS_Presentation*.pptx
 slide-*.jpg
 node_modules/
+
+# Presentation & scripts (local only)
+*.pptx
+build_ppt*.js
+package.json
+package-lock.json
+KOREAN_SCRIPT.md
+ENGLISH_SCRIPT.md
+DEMO_SCRIPT.md
+RECORDING_GUIDE.md
 
 # OS / IDE / agent harnesses
 .DS_Store
