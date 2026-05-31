@@ -145,9 +145,13 @@ class Store:
         source: str = "transmitter",
         received_at: float | None = None,
     ) -> None:
+        # Manual injections use REPLACE so re-injecting the same seq is allowed.
+        # Transmitter/UDP use IGNORE so they never overwrite a manual injection
+        # that happens to land on the same (zone, seq) primary key.
+        conflict = "REPLACE" if source == "manual" else "IGNORE"
         with self._cursor() as cur:
             cur.execute(
-                """INSERT OR REPLACE INTO readings
+                f"""INSERT OR {conflict} INTO readings
                    (zone, seq, ts, transmitted_at, received_at,
                     power, temperature, humidity, co2, source)
                    VALUES (?,?,?,?,?,?,?,?,?,?)""",
@@ -165,18 +169,23 @@ class Store:
         self,
         zone: str | None = None,
         last_n: int = 200,
+        source: str | None = None,
     ) -> list[dict]:
+        conditions: list[str] = []
+        args: list = []
         if zone:
-            q = (
-                "SELECT * FROM readings WHERE zone = ? "
-                "ORDER BY seq DESC LIMIT ?"
-            )
-            args = (zone, last_n)
+            conditions.append("zone = ?")
+            args.append(zone)
+        if source:
+            conditions.append("source = ?")
+            args.append(source)
+        where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
+        if zone or source:
+            q = f"SELECT * FROM readings {where} ORDER BY received_at DESC LIMIT ?"
+            args.append(last_n)
         else:
-            q = (
-                "SELECT * FROM readings ORDER BY zone, seq DESC LIMIT ?"
-            )
-            args = (last_n * max(1, len(ZONE_NAMES)),)
+            q = f"SELECT * FROM readings {where} ORDER BY zone, seq DESC LIMIT ?"
+            args.append(last_n * max(1, len(ZONE_NAMES)))
         with self._cursor() as cur:
             rows = [dict(r) for r in cur.execute(q, args)]
         rows.sort(key=lambda r: (r["zone"], r["seq"]))

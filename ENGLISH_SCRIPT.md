@@ -58,7 +58,7 @@ The **Transmitter** then forwards each sample twice — a clean copy for evaluat
 
 ## ⑤ STAGE 3 — Collector  [Slide 7]
 
-The **Collector** is a FastAPI service. It persists everything to SQLite and exposes eleven REST endpoints. The most important for the demo is `/inject`, which lets the user push custom test samples into the pipeline. It also runs the background worker that produces decisions. ||
+The **Collector** is a FastAPI service. It persists everything to SQLite and exposes twelve REST endpoints. The most important for the demo is `/inject`, which lets the user push custom test samples into the pipeline. It also runs the background worker that produces decisions. ||
 
 [Advance to slide 8.]
 
@@ -90,9 +90,17 @@ Every alert is auditable. There is no neural network making opaque judgments —
 
 ---
 
-## ⑧ LIVE DEMO — Operations  [Browser · Operations tab]
+## ⑧ LIVE DEMO — Building View  [Browser · Building tab]
 
 Let me show it running. This is the operations console at localhost:8501. ||
+
+The first thing you see is the **Building tab** — a live floor-plan view of the building. Each zone glows green when nominal, orange for a warning, and red for a critical event. You can also drill into any zone to see its live sensor charts directly here. ||
+
+Right now all three zones are green. Let me click over to the **Operations tab** for the system health overview. ||
+
+---
+
+## ⑨ LIVE DEMO — Operations  [Click "Operations" tab]
 
 Across the top, a KPI strip — three active zones, several thousand packets received, around eleven percent packet loss, and the decisions made in the background. ||
 
@@ -100,19 +108,19 @@ On the left, every service in the pipeline is reporting Operational. On the righ
 
 ---
 
-## ⑨ LIVE DEMO — Inject a scenario  [Click "Scenario Lab" tab]
+## ⑩ LIVE DEMO — Inject a scenario  [Click "Scenario Lab" tab]
 
 I'll open the **Scenario Lab** tab. There are five preset failure scenarios. ||
 
 I'll inject `fire_risk` into Zone-A. ||
 
-[Click the **Inject into Zone-A** button under fire_risk. Wait about three seconds.]
+[Click the **Inject into Zone-A** button under fire_risk.]
 
-The background worker picks this up within one second. Let's see what it decided. ||
+The dashboard waits briefly, then shows the result card immediately — the background worker processes the sample within one second. ||
 
 ---
 
-## ⑩ LIVE DEMO — Alerts  [Click "Alerts" tab]
+## ⑪ LIVE DEMO — Alerts  [Click "Alerts" tab]
 
 And here it is — a **Critical event** in Zone-A. ||
 
@@ -122,7 +130,7 @@ You can see the exact evidence — which sensors fired, their values, and their 
 
 ---
 
-## ⑪ LIVE DEMO — Telemetry  [Click "Telemetry" tab]
+## ⑫ LIVE DEMO — Telemetry  [Click "Telemetry" tab]
 
 The **Telemetry** tab lets the operator pick any zone and inspect all four sensors in real time. ||
 
@@ -132,7 +140,7 @@ The spike I just injected is clearly visible. ||
 
 ---
 
-## ⑫ LIVE DEMO — Quality Metrics  [Click "Quality Metrics" tab]
+## ⑬ LIVE DEMO — Quality Metrics  [Click "Quality Metrics" tab]
 
 Because every sample carries a ground-truth label, I can **quantitatively evaluate** the pipeline. ||
 
@@ -144,7 +152,7 @@ The top table shows per-sensor interpolation error — how close the recovered v
 
 ---
 
-## ⑬ CONCLUSION  [Slide 14]
+## ⑭ CONCLUSION  [Slide 14]
 
 To wrap up — what I built. ||
 
@@ -154,7 +162,7 @@ What's next: fitting the simulator to the real ASHRAE dataset, adding an LSTM de
 
 ---
 
-## ⑭ CLOSE
+## ⑮ CLOSE
 
 That's the BEMS Anomaly Operations Center. ||
 

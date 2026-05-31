@@ -1,0 +1,27 @@
+{
+  "name": "ict",
+  "version": "1.0.0",
+  "description": "**🌐 Language:** **English** · [한국어](README.ko.md)",
+  "main": "build_ppt.js",
+  "directories": {
+    "test": "tests"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/SungHyunC/BEMS-Anomaly-Operations-Center.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/SungHyunC/BEMS-Anomaly-Operations-Center/issues"
+  },
+  "homepage": "https://github.com/SungHyunC/BEMS-Anomaly-Operations-Center#readme",
+  "dependencies": {
+    "pptxgenjs": "^4.0.1"
+  }
+}

@@ -818,7 +818,7 @@ const TOTAL = 14;
       icon: "Z", name: "Robust Z-score",
       sub: "통계 기반 · 단변량",
       color: C.primary, bg: C.primaryBg,
-      desc: "MAD(Median Absolute Deviation)로 강건하게 σ를 추정. |z| > 2.5 시 플래그.",
+      desc: "MAD(Median Absolute Deviation)로 강건하게 σ를 추정. |z| > 3.2 시 플래그.",
       pros: "• 빠름, 윈도우 단위로 즉시 계산\n• 단일 이상치에 통계가 오염되지 않음",
     },
     {
@@ -832,7 +832,7 @@ const TOTAL = 14;
       icon: "F", name: "IsolationForest",
       sub: "다변량 · ML",
       color: C.accent, bg: C.accentBg,
-      desc: "scikit-learn IsolationForest, contamination=0.05. 여러 센서의 결합 패턴이 비정상이면 플래그.",
+      desc: "scikit-learn IsolationForest, contamination=0.02. 여러 센서의 결합 패턴이 비정상이면 플래그.",
       pros: "• 단일 센서로는 못 잡는 패턴 포착\n• n_estimators=80 · zone별 학습",
     },
   ];
@@ -998,29 +998,35 @@ const TOTAL = 14;
 {
   const s = pres.addSlide(); lightBg(s);
   pageHeader(s, "08  ·  STAGE 6", "Dashboard — 엔터프라이즈 운영 콘솔",
-             "6개 탭으로 분리된 Streamlit 콘솔. 실시간 데이터를 시각화하고 사용자 조작을 받습니다.");
+             "7개 탭으로 분리된 Streamlit 콘솔. 실시간 데이터를 시각화하고 사용자 조작을 받습니다.");
 
   const tabs = [
-    { num: "01", name: "Operations",    desc: "시스템 헬스 보드 · 6개 서비스 상태 · 결정 타임라인 · zone별 카드",
+    { num: "01", name: "Building",      desc: "건물 평면도 뷰 · 층별 심각도 색상 · 구역 드릴다운 · 결함 주입 단축키",
+      color: C.accent,  bg: C.accentBg,  icon: "🏢" },
+    { num: "02", name: "Operations",    desc: "시스템 헬스 보드 · 6개 서비스 상태 · 결정 타임라인 · zone별 카드",
       color: C.primary, bg: C.primaryBg, icon: "▦" },
-    { num: "02", name: "Telemetry",     desc: "Zone 선택 · 4센서 실시간 차트 · raw vs interpolated · 이상치 오버레이",
+    { num: "03", name: "Telemetry",     desc: "Zone 선택 · 4센서 실시간 차트 · raw vs interpolated · 이상치 오버레이",
       color: C.primary, bg: C.primaryBg, icon: "📈" },
-    { num: "03", name: "Pipeline",      desc: "6개 에이전트 위상도 · 각 에이전트의 상태/KPI/책임/소스 파일",
+    { num: "04", name: "Pipeline",      desc: "6개 에이전트 위상도 · 각 에이전트의 상태/KPI/책임/소스 파일",
       color: C.accent,  bg: C.accentBg,  icon: "◆" },
-    { num: "04", name: "Alerts",        desc: "Severity · zone 필터 · 진단/권고/증거 컬럼 · CSV 내보내기",
+    { num: "05", name: "Alerts",        desc: "Severity · zone 필터 · 진단/권고/증거 컬럼 · CSV 내보내기",
       color: C.crit,    bg: C.critBg,    icon: "🚨" },
-    { num: "05", name: "Scenario Lab",  desc: "5개 프리셋 시나리오 원클릭 주입 · 커스텀 센서값 폼 · 최근 주입 이력",
+    { num: "06", name: "Scenario Lab",  desc: "5개 프리셋 시나리오 원클릭 주입 · 커스텀 센서값 폼 · 최근 주입 이력",
       color: C.ok,      bg: C.okBg,      icon: "🧪" },
-    { num: "06", name: "Quality Metrics",desc: "보간 MAE 표 · 4-detector P/R/F1 표 · F1 비교 막대 차트",
+    { num: "07", name: "Quality Metrics",desc: "보간 MAE 표 · 4-detector P/R/F1 표 · F1 비교 막대 차트",
       color: C.ok,      bg: C.okBg,      icon: "📐" },
   ];
 
-  const tw = (W - 2 * MARGIN - 0.4) / 3;
-  const th = 2.10;
+  // 7 cards: first row 4, second row 3
+  const tw4 = (W - 2 * MARGIN - 0.3 * 3) / 4;
+  const tw3 = (W - 2 * MARGIN - 0.3 * 2) / 3;
+  const th = 2.00;
   tabs.forEach((t, i) => {
-    const col = i % 3; const row = Math.floor(i / 3);
-    const x = MARGIN + col * (tw + 0.2);
-    const y = 2.30 + row * (th + 0.25);
+    const isRow2 = i >= 4;
+    const tw = isRow2 ? tw3 : tw4;
+    const col = isRow2 ? i - 4 : i;
+    const x = MARGIN + col * (tw + 0.3);
+    const y = isRow2 ? 2.30 + th + 0.22 : 2.30;
     card(s, x, y, tw, th);
     s.addShape(pres.shapes.RECTANGLE, {
       x, y, w: tw, h: 0.55, fill: { color: t.bg }, line: { width: 0 },
@@ -1053,7 +1059,7 @@ const TOTAL = 14;
              "운영자가 시스템을 모니터링하고 알림을 조치하는 두 화면.");
 
   // helper: render an enterprise-style "mock" tab bar inside a card
-  const TABS = ["Operations", "Telemetry", "Pipeline", "Alerts", "Lab", "Metrics"];
+  const TABS = ["Building", "Operations", "Telemetry", "Pipeline", "Alerts", "Lab", "Metrics"];
   const drawMockHeader = (x, y, w, activeIdx) => {
     // appbar
     s.addShape(pres.shapes.RECTANGLE, {
@@ -1105,7 +1111,7 @@ const TOTAL = 14;
   const lx = MARGIN; const ly = 2.3;
   const lw = (W - 2 * MARGIN - 0.4) / 2;
   card(s, lx, ly, lw, 4.3);
-  const tabBarY = drawMockHeader(lx, ly, lw, 0);
+  const tabBarY = drawMockHeader(lx, ly, lw, 1);  // Operations is index 1 (Building is 0)
 
   // KPI strip
   const kpis = [
@@ -1174,10 +1180,10 @@ const TOTAL = 14;
   // === Right mockup: Alerts ===
   const rx = lx + lw + 0.4;
   card(s, rx, ly, lw, 4.3);
-  drawMockHeader(rx, ly, lw, 3);   // Alerts is the 4th tab (index 3)
+  drawMockHeader(rx, ly, lw, 4);   // Alerts is the 5th tab (index 4, Building added as 0)
 
   // caption above the right card
-  s.addText("Tab #4  —  Alerts Feed", {
+  s.addText("Tab #5  —  Alerts Feed", {
     x: rx, y: ly - 0.30, w: lw, h: 0.26,
     fontFace: FONT, fontSize: 10, color: C.muted, italic: true,
     align: "center", margin: 0,
@@ -1248,7 +1254,7 @@ const TOTAL = 14;
   const lx = MARGIN; const ly = 2.3;
   const lw = (W - 2 * MARGIN - 0.4) / 2;
 
-  s.addText("Tab #5  —  Scenario Lab", {
+  s.addText("Tab #6  —  Scenario Lab", {
     x: lx, y: ly - 0.30, w: lw, h: 0.26,
     fontFace: FONT, fontSize: 10, color: C.muted, italic: true,
     align: "center", margin: 0,
@@ -1308,7 +1314,7 @@ const TOTAL = 14;
   // === Right: Quality Metrics ===
   const rx = lx + lw + 0.4;
 
-  s.addText("Tab #6  —  Quality Metrics", {
+  s.addText("Tab #7  —  Quality Metrics", {
     x: rx, y: ly - 0.30, w: lw, h: 0.26,
     fontFace: FONT, fontSize: 10, color: C.muted, italic: true,
     align: "center", margin: 0,
@@ -1468,7 +1474,7 @@ const TOTAL = 14;
     "10% 패킷 손실 + 0.2–1.5s 지연 환경에서 시계열 무결성 유지",
     "3-detector 앙상블로 단변량/다변량 이상 모두 포착",
     "9개 룰 엔진으로 결정론적·감사 가능한 진단 (블랙박스 X)",
-    "엔터프라이즈 톤의 6탭 운영 콘솔",
+    "엔터프라이즈 톤의 7탭 운영 콘솔 (Building 뷰 포함)",
     "Pytest 24개 — 데드락 회귀 테스트 포함",
     "ground-truth 라벨 기반 P/R/F1 정량 평가 내장",
   ];

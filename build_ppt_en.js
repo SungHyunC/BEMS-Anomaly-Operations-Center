@@ -320,7 +320,7 @@ const TOTAL = 14;
     ["✓", "Recover",     "Linear interpolation fills dropped sequences for a gapless series"],
     ["✓", "Detect",     "Z-score · hard threshold · IsolationForest — a 3-detector ensemble"],
     ["✓", "Diagnose",     "Match the fired-sensor pattern to 9 rules to infer root cause"],
-    ["✓", "Operate",     "Streamlit console — 6-tab operations view with scenario injection"],
+    ["✓", "Operate",     "Streamlit console — 7-tab operations view with scenario injection"],
   ];
   solutions.forEach((p, i) => {
     const y = 3.7 + i * 0.62;
@@ -818,7 +818,7 @@ const TOTAL = 14;
       icon: "Z", name: "Robust Z-score",
       sub: "Statistical · univariate",
       color: C.primary, bg: C.primaryBg,
-      desc: "Estimates σ robustly via MAD (median absolute deviation). Flags when |z| > 2.5.",
+      desc: "Estimates σ robustly via MAD (median absolute deviation). Flags when |z| > 3.2.",
       pros: "• Fast, computed per window\n• A single outlier won't poison the statistics",
     },
     {
@@ -832,7 +832,7 @@ const TOTAL = 14;
       icon: "F", name: "IsolationForest",
       sub: "Multivariate · ML",
       color: C.accent, bg: C.accentBg,
-      desc: "scikit-learn IsolationForest, contamination=0.05. Flags abnormal multi-sensor patterns.",
+      desc: "scikit-learn IsolationForest, contamination=0.02. Flags abnormal multi-sensor patterns.",
       pros: "• Catches patterns no single sensor can\n• n_estimators=80 · trained per zone",
     },
   ];
@@ -998,29 +998,35 @@ const TOTAL = 14;
 {
   const s = pres.addSlide(); lightBg(s);
   pageHeader(s, "08  ·  STAGE 6", "Dashboard — Enterprise Operations Console",
-             "A six-tab Streamlit console that visualizes live data and accepts user input.");
+             "A seven-tab Streamlit console that visualizes live data and accepts user input.");
 
   const tabs = [
-    { num: "01", name: "Operations",    desc: "System health board · 6 service states · decision timeline · per-zone cards",
+    { num: "01", name: "Building",      desc: "Live floor-plan view · zones glow by severity · drill-down sensor charts · quick fault inject",
+      color: C.accent,  bg: C.accentBg,  icon: "🏢" },
+    { num: "02", name: "Operations",    desc: "System health board · 6 service states · decision timeline · per-zone cards",
       color: C.primary, bg: C.primaryBg, icon: "▦" },
-    { num: "02", name: "Telemetry",     desc: "Zone selector · 4-sensor live charts · raw vs interpolated · anomaly overlays",
+    { num: "03", name: "Telemetry",     desc: "Zone selector · 4-sensor live charts · raw vs interpolated · anomaly overlays",
       color: C.primary, bg: C.primaryBg, icon: "📈" },
-    { num: "03", name: "Pipeline",      desc: "6-agent topology · each agent's status / KPIs / role / source file",
+    { num: "04", name: "Pipeline",      desc: "6-agent topology · each agent's status / KPIs / role / source file",
       color: C.accent,  bg: C.accentBg,  icon: "◆" },
-    { num: "04", name: "Alerts",        desc: "Severity · zone filters · diagnosis/action/evidence columns · CSV export",
+    { num: "05", name: "Alerts",        desc: "Severity · zone filters · diagnosis/action/evidence columns · CSV export",
       color: C.crit,    bg: C.critBg,    icon: "🚨" },
-    { num: "05", name: "Scenario Lab",  desc: "One-click inject of 5 presets · custom sensor-value form · recent injections",
+    { num: "06", name: "Scenario Lab",  desc: "One-click inject of 5 presets · custom sensor-value form · recent injections",
       color: C.ok,      bg: C.okBg,      icon: "🧪" },
-    { num: "06", name: "Quality Metrics",desc: "Interpolation MAE table · 4-detector P/R/F1 table · F1 comparison bars",
+    { num: "07", name: "Quality Metrics",desc: "Interpolation MAE table · 4-detector P/R/F1 table · F1 comparison bars",
       color: C.ok,      bg: C.okBg,      icon: "📐" },
   ];
 
-  const tw = (W - 2 * MARGIN - 0.4) / 3;
-  const th = 2.10;
+  // 7 cards: first row 4, second row 3
+  const tw4 = (W - 2 * MARGIN - 0.3 * 3) / 4;
+  const tw3 = (W - 2 * MARGIN - 0.3 * 2) / 3;
+  const th = 2.00;
   tabs.forEach((t, i) => {
-    const col = i % 3; const row = Math.floor(i / 3);
-    const x = MARGIN + col * (tw + 0.2);
-    const y = 2.30 + row * (th + 0.25);
+    const isRow2 = i >= 4;
+    const tw = isRow2 ? tw3 : tw4;
+    const col = isRow2 ? i - 4 : i;
+    const x = MARGIN + col * (tw + 0.3);
+    const y = isRow2 ? 2.30 + th + 0.22 : 2.30;
     card(s, x, y, tw, th);
     s.addShape(pres.shapes.RECTANGLE, {
       x, y, w: tw, h: 0.55, fill: { color: t.bg }, line: { width: 0 },
@@ -1053,7 +1059,7 @@ const TOTAL = 14;
              "The two screens operators use to monitor the system and act on alerts.");
 
   // helper: render an enterprise-style "mock" tab bar inside a card
-  const TABS = ["Operations", "Telemetry", "Pipeline", "Alerts", "Lab", "Metrics"];
+  const TABS = ["Building", "Operations", "Telemetry", "Pipeline", "Alerts", "Lab", "Metrics"];
   const drawMockHeader = (x, y, w, activeIdx) => {
     // appbar
     s.addShape(pres.shapes.RECTANGLE, {
@@ -1105,7 +1111,7 @@ const TOTAL = 14;
   const lx = MARGIN; const ly = 2.3;
   const lw = (W - 2 * MARGIN - 0.4) / 2;
   card(s, lx, ly, lw, 4.3);
-  const tabBarY = drawMockHeader(lx, ly, lw, 0);
+  const tabBarY = drawMockHeader(lx, ly, lw, 1);  // Operations is index 1 (Building is 0)
 
   // KPI strip
   const kpis = [
@@ -1165,7 +1171,7 @@ const TOTAL = 14;
   });
 
   // caption above the card (inside header area), not below colliding with footer
-  s.addText("Tab #1  —  Operations View", {
+  s.addText("Tab #2  —  Operations View", {
     x: lx, y: ly - 0.30, w: lw, h: 0.26,
     fontFace: FONT, fontSize: 10, color: C.muted, italic: true,
     align: "center", margin: 0,
@@ -1174,10 +1180,10 @@ const TOTAL = 14;
   // === Right mockup: Alerts ===
   const rx = lx + lw + 0.4;
   card(s, rx, ly, lw, 4.3);
-  drawMockHeader(rx, ly, lw, 3);   // Alerts is the 4th tab (index 3)
+  drawMockHeader(rx, ly, lw, 4);   // Alerts is the 5th tab (index 4, Building added as 0)
 
   // caption above the right card
-  s.addText("Tab #4  —  Alerts Feed", {
+  s.addText("Tab #5  —  Alerts Feed", {
     x: rx, y: ly - 0.30, w: lw, h: 0.26,
     fontFace: FONT, fontSize: 10, color: C.muted, italic: true,
     align: "center", margin: 0,
@@ -1248,7 +1254,7 @@ const TOTAL = 14;
   const lx = MARGIN; const ly = 2.3;
   const lw = (W - 2 * MARGIN - 0.4) / 2;
 
-  s.addText("Tab #5  —  Scenario Lab", {
+  s.addText("Tab #6  —  Scenario Lab", {
     x: lx, y: ly - 0.30, w: lw, h: 0.26,
     fontFace: FONT, fontSize: 10, color: C.muted, italic: true,
     align: "center", margin: 0,
@@ -1308,7 +1314,7 @@ const TOTAL = 14;
   // === Right: Quality Metrics ===
   const rx = lx + lw + 0.4;
 
-  s.addText("Tab #6  —  Quality Metrics", {
+  s.addText("Tab #7  —  Quality Metrics", {
     x: rx, y: ly - 0.30, w: lw, h: 0.26,
     fontFace: FONT, fontSize: 10, color: C.muted, italic: true,
     align: "center", margin: 0,
@@ -1468,7 +1474,7 @@ const TOTAL = 14;
     "Keeps the series intact under 10% packet loss + 0.2–1.5 s delay",
     "3-detector ensemble catches both univariate and multivariate anomalies",
     "9-rule engine — deterministic, auditable diagnosis (no black box)",
-    "Enterprise-style 6-tab operations console",
+    "Enterprise-style 7-tab operations console",
     "24 pytest cases — including a deadlock regression test",
     "Built-in P/R/F1 evaluation against ground-truth labels",
   ];

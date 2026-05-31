@@ -58,7 +58,7 @@ Tone: confident, conversational, not over-rehearsed. Pause briefly between secti
 
 ## 2:25 — Stage 3 Collector (Slide 7)
 
-> "Stage three is the **Collector** — a FastAPI service. It persists everything to SQLite and exposes eleven endpoints. The most important is `/inject`, which lets the user push custom test samples into the pipeline."
+> "Stage three is the **Collector** — a FastAPI service. It persists everything to SQLite and exposes twelve endpoints. The most important is `/inject`, which lets the user push custom test samples into the pipeline."
 
 (Click to slide 8.)
 
@@ -86,13 +86,21 @@ Tone: confident, conversational, not over-rehearsed. Pause briefly between secti
 
 > "Let me show this running. Here's the operations console at localhost:8501."
 
-(You should already be on the **Operations** tab.)
+(The dashboard opens on the **Building** tab.)
 
 ---
 
-## 4:00 — LIVE DEMO: Operations tab
+## 3:50 — LIVE DEMO: Building tab
 
-> "Top row — KPI strip: three active zones, eight thousand packets received, eleven percent packet loss, decisions made in the background."
+> "The first thing you see is a live building view — each floor zone glows by its current severity. Green means nominal, orange is a warning, red is critical. Right now everything is green. Let me jump to the **Operations** tab."
+
+(Click **Operations** tab.)
+
+---
+
+## 4:05 — LIVE DEMO: Operations tab
+
+> "Top row — KPI strip: three active zones, several thousand packets received, around eleven percent packet loss, decisions made in the background."
 
 > "Left side: every service in the pipeline is operational. Right side: a decision timeline that highlights Critical events as red stars and Warning as orange diamonds. Right now everything is nominal."
 
@@ -100,7 +108,7 @@ Tone: confident, conversational, not over-rehearsed. Pause briefly between secti
 
 ---
 
-## 4:20 — LIVE DEMO: inject a scenario
+## 4:25 — LIVE DEMO: inject a scenario
 
 > "Let me trigger an anomaly. I'll go to the **Scenario Lab** tab."
 
@@ -108,11 +116,9 @@ Tone: confident, conversational, not over-rehearsed. Pause briefly between secti
 
 > "Five preset scenarios. I'll inject `fire_risk` into Zone-A."
 
-(Click the **Inject** button under fire_risk for Zone-A.)
+(Click the **Inject** button under fire_risk for Zone-A. The button sleeps ~1.5 s then reruns automatically — no need to wait manually.)
 
-> "The background worker picks this up within one second."
-
-(Wait ~3 seconds, then click **Alerts** tab.)
+> "The result card appears right below — the background worker processed it in about one second."
 
 ---
 

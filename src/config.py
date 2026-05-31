@@ -54,8 +54,8 @@ class PipelineConfig:
     collector_port: int = 8000
     sample_interval_s: float = 1.0
     window_size: int = 120
-    zscore_threshold: float = 2.5
-    iforest_contamination: float = 0.05
+    zscore_threshold: float = 3.2
+    iforest_contamination: float = 0.02
     iforest_min_samples: int = 30
     anomaly_injection_rate: float = 0.04
     decision_worker_interval_s: float = 1.0
@@ -64,7 +64,7 @@ class PipelineConfig:
     #   "udp"  = connectionless datagrams on BACnet/IP's port (realistic; lossy)
     #   "rest" = HTTP POST /ingest (reliable fallback)
     # The management/API plane (dashboard, evaluation, inject) always stays REST.
-    transport: str = "udp"
+    transport: str = "rest"
     udp_host: str = "127.0.0.1"
     udp_port: int = 47808            # BACnet/IP standard UDP port
 

@@ -109,8 +109,10 @@ class DecisionWorker:
             df = ml_processor.process_zone(recs, zone)
             if df.empty:
                 continue
-            last_done = self.store.last_decided_seq(zone)
-            new = df[df["seq"] > last_done]
+            # Use set membership so injected high-seq samples never block
+            # lower-seq transmitter samples from getting a decision.
+            decided = {r["seq"] for r in self.store.decisions(zone=zone, last_n=PIPELINE.window_size)}
+            new = df[~df["seq"].isin(decided)]
             for _, row in new.iterrows():
                 result = decide(row.to_dict())
                 self.store.insert_decision({
@@ -232,9 +234,10 @@ def zones() -> dict:
 
 
 @app.get("/raw")
-def raw(zone: str | None = Query(None), last_n: int = Query(200, ge=1, le=5000)) -> dict:
+def raw(zone: str | None = Query(None), last_n: int = Query(200, ge=1, le=5000),
+        source: str | None = Query(None)) -> dict:
     store = get_store()
-    records = store.readings(zone=zone, last_n=last_n)
+    records = store.readings(zone=zone, last_n=last_n, source=source)
     missing = store.missing_seqs(zone) if zone else []
     return {"count": len(records), "missing_seqs": missing, "records": records}
 

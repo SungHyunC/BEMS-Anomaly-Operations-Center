@@ -652,10 +652,26 @@ hr {{ margin: 0.6rem 0 !important; border-color: var(--border) !important; }}
 .pm.bad {{ color: #b91c1c; font-weight: 700; }}
 .plan-room.crit {{ animation: floorpulse 1.7s ease-in-out infinite; }}
 
-/* --- hide chrome (minimal — never touch the header or sidebar controls,
-       so Streamlit's native collapse/expand arrow keeps working) ------- */
+/* --- hide chrome ---------------------------------------------------- */
 footer {{ visibility: hidden; }}
 #MainMenu {{ visibility: hidden; }}
+
+/* --- minimise fragment-refresh flash -------------------------------- */
+/* Keep background solid so the brief DOM reconcile is less noticeable */
+[data-testid="stApp"],
+[data-testid="stAppViewContainer"],
+[data-testid="stMain"] {{
+    background-color: {C_BG} !important;
+}}
+/* Hide the top-right "Running…" spinner that causes the flash effect */
+[data-testid="stStatusWidget"] {{
+    display: none !important;
+}}
+/* Suppress React fade-in animation on re-rendered elements */
+[data-testid="stVerticalBlock"] > * {{
+    animation: none !important;
+    transition: none !important;
+}}
 </style>
 """
 st.markdown(CSS, unsafe_allow_html=True)
@@ -670,6 +686,12 @@ def _get(path: str, **params) -> dict:
     except httpx.HTTPError as exc:
         st.error(f"GET {path} failed: {exc}")
         return {}
+
+
+@st.cache_data(ttl=3)
+def _get_processed(zone: str, last_n: int = 200) -> dict:
+    """Cached wrapper for /processed — avoids re-running IsolationForest on every rerun."""
+    return _get("/processed", zone=zone, last_n=last_n)
 
 
 def _post(path: str, json: dict | None = None, **params) -> dict:
@@ -738,8 +760,8 @@ def _sidebar() -> dict:
         f"letter-spacing:0.06em; font-weight:600; margin:14px 0 6px 0;'>{t('sec_refresh')}</div>",
         unsafe_allow_html=True,
     )
-    auto = st.sidebar.toggle(t("auto_refresh"), value=True, label_visibility="collapsed")
-    refresh = st.sidebar.slider(t("interval"), 2.0, 15.0, 4.0, 0.5,
+    auto = st.sidebar.toggle(t("auto_refresh"), value=False, label_visibility="collapsed")
+    refresh = st.sidebar.slider(t("interval"), 5.0, 30.0, 10.0, 1.0,
                                 label_visibility="collapsed")
     st.sidebar.caption(t("refresh_on", s=f"{refresh:.1f}") if auto
                        else t("refresh_off", s=f"{refresh:.1f}"))
@@ -786,16 +808,17 @@ def _sidebar() -> dict:
 def _style_axes(fig: go.Figure, height: int = 300) -> go.Figure:
     fig.update_layout(
         height=height,
-        margin={"l": 54, "r": 18, "t": 34, "b": 34},
+        margin={"l": 60, "r": 28, "t": 48, "b": 48},
         paper_bgcolor="white", plot_bgcolor="white",
         font={"color": C_TEXT, "family": "-apple-system, sans-serif", "size": 12},
         xaxis={"gridcolor": PLOT["grid"], "linecolor": PLOT["axis"],
                "zeroline": False, "showspikes": True, "spikecolor": "#cbd5e1",
                "spikedash": "dot", "spikethickness": 1, "ticks": "outside",
-               "tickcolor": PLOT["axis"], "ticklen": 4},
+               "tickcolor": PLOT["axis"], "ticklen": 4, "tickfont": {"size": 11}},
         yaxis={"gridcolor": PLOT["grid"], "linecolor": PLOT["axis"], "zeroline": False,
-               "ticks": "outside", "tickcolor": PLOT["axis"], "ticklen": 4},
-        legend={"orientation": "h", "y": -0.22, "x": 0, "bgcolor": "rgba(0,0,0,0)",
+               "ticks": "outside", "tickcolor": PLOT["axis"], "ticklen": 4,
+               "tickfont": {"size": 11}},
+        legend={"orientation": "h", "y": -0.26, "x": 0, "bgcolor": "rgba(0,0,0,0)",
                 "font": {"size": 11}},
     )
     return fig
@@ -931,16 +954,16 @@ def tab_operations(stats: dict, decisions: list[dict]) -> None:
                     ),
                 ))
 
-            _style_axes(fig, height=320)
+            _style_axes(fig, height=340)
             fig.update_layout(
                 yaxis={"title": "", "categoryorder": "array",
                        "categoryarray": zones_order[::-1],
                        "tickfont": {"size": 12, "color": C_TEXT}, "showgrid": False},
                 xaxis={"title": "", "tickformat": "%H:%M:%S",
                        "showgrid": True, "gridcolor": "#f1f3f5"},
-                legend={"orientation": "h", "y": 1.10, "x": 0, "bgcolor": "rgba(0,0,0,0)",
+                legend={"orientation": "h", "y": 1.12, "x": 0, "bgcolor": "rgba(0,0,0,0)",
                         "font": {"size": 11, "color": C_TEXT}, "itemclick": "toggleothers"},
-                margin={"l": 70, "r": 20, "t": 50, "b": 30},
+                margin={"l": 70, "r": 24, "t": 56, "b": 36},
                 hoverlabel={"bgcolor": "white", "bordercolor": C_BORDER,
                             "font": {"color": C_TEXT, "size": 12}},
             )
@@ -981,98 +1004,146 @@ def tab_operations(stats: dict, decisions: list[dict]) -> None:
 
 
 # ─────────────────────────────────────────────────── tab: Telemetry
+_CHART_WINDOW = 60   # points shown per chart — wide enough to show trends, not cluttered
+
+
+def _to_time_axis(df: pd.DataFrame) -> pd.Series:
+    """Convert ts column to readable datetime for x-axis."""
+    if "ts" in df.columns and not df["ts"].isna().all():
+        return pd.to_datetime(df["ts"], unit="s")
+    return df["seq"]   # fallback
+
+
 def _sensor_chart(name: str, raw_df: pd.DataFrame, proc_df: pd.DataFrame,
                   show_raw: bool = True) -> go.Figure:
     spec = SENSORS[name]
     fig = go.Figure()
 
+    # ── trim to last N points so the chart breathes
+    if not proc_df.empty:
+        proc_df = proc_df.iloc[-_CHART_WINDOW:]
+    if show_raw and not raw_df.empty:
+        raw_df = raw_df[raw_df["seq"].isin(proc_df["seq"])] if not proc_df.empty else raw_df.iloc[-_CHART_WINDOW:]
+
+    px = _to_time_axis(proc_df) if not proc_df.empty else None
+    rx = _to_time_axis(raw_df) if (show_raw and not raw_df.empty) else None
+
     all_vals = []
     if not proc_df.empty:
-        all_vals += proc_df[name].tolist()
+        all_vals += proc_df[name].dropna().tolist()
     if show_raw and not raw_df.empty and name in raw_df.columns:
-        all_vals += raw_df[name].tolist()
+        all_vals += raw_df[name].dropna().tolist()
     ymin, ymax = _yrange(all_vals, spec)
 
+    # ── background bands
     if spec.anomaly_high is not None:
         fig.add_hrect(y0=spec.anomaly_high, y1=ymax, fillcolor=C_CRIT,
-                      opacity=0.05, line_width=0, layer="below")
+                      opacity=0.04, line_width=0, layer="below")
     if spec.anomaly_low is not None:
         fig.add_hrect(y0=ymin, y1=spec.anomaly_low, fillcolor=C_CRIT,
-                      opacity=0.05, line_width=0, layer="below")
-    fig.add_hrect(y0=spec.normal_min, y1=spec.normal_max, fillcolor=PLOT["normal_band"],
-                  opacity=0.08, line_width=0, layer="below",
+                      opacity=0.04, line_width=0, layer="below")
+    fig.add_hrect(y0=spec.normal_min, y1=spec.normal_max,
+                  fillcolor=PLOT["normal_band"], opacity=0.07, line_width=0, layer="below",
                   annotation_text=t("lk_normal"), annotation_position="top left",
                   annotation_font={"size": 9, "color": C_OK})
 
     if spec.anomaly_high is not None:
-        fig.add_hline(y=spec.anomaly_high, line_dash="dot", line_color=C_CRIT, line_width=1, opacity=0.6)
+        fig.add_hline(y=spec.anomaly_high, line_dash="dot",
+                      line_color=C_CRIT, line_width=1, opacity=0.45)
     if spec.anomaly_low is not None:
-        fig.add_hline(y=spec.anomaly_low, line_dash="dot", line_color=C_CRIT, line_width=1, opacity=0.6)
+        fig.add_hline(y=spec.anomaly_low, line_dash="dot",
+                      line_color=C_CRIT, line_width=1, opacity=0.45)
 
-    if show_raw and not raw_df.empty and name in raw_df.columns:
+    # ── raw scatter (optional)
+    if show_raw and not raw_df.empty and name in raw_df.columns and rx is not None:
         fig.add_trace(go.Scatter(
-            x=raw_df["seq"], y=raw_df[name], mode="markers", name="Raw",
-            marker={"color": PLOT["raw"], "size": 4.5, "opacity": 0.5},
-            hovertemplate="seq %{x} · raw %{y:.2f}" + spec.unit + "<extra></extra>",
+            x=rx, y=raw_df[name], mode="markers", name="Raw",
+            marker={"color": PLOT["raw"], "size": 4, "opacity": 0.4},
+            hovertemplate="%{x|%H:%M:%S} · raw %{y:.2f} " + spec.unit + "<extra></extra>",
         ))
 
-    if not proc_df.empty:
+    # ── ML-recovered line
+    if not proc_df.empty and px is not None:
         fig.add_trace(go.Scatter(
-            x=proc_df["seq"], y=proc_df[name], mode="lines", name=t("lk_signal"),
-            line={"color": PLOT["interp"], "width": 2.4, "shape": "spline"},
-            fill="tozeroy", fillcolor="rgba(31,93,222,0.06)",
-            hovertemplate="seq %{x} · %{y:.2f}" + spec.unit + "<extra></extra>",
+            x=px, y=proc_df[name], mode="lines", name=t("lk_signal"),
+            line={"color": PLOT["interp"], "width": 2.2, "shape": "spline"},
+            hovertemplate="%{x|%H:%M:%S} · %{y:.2f} " + spec.unit + "<extra></extra>",
         ))
+
+        # recovered (was_missing) markers
         if "was_missing" in proc_df.columns:
             rec = proc_df[proc_df["was_missing"] == True]   # noqa: E712
             if not rec.empty:
+                rpx = _to_time_axis(rec)
                 fig.add_trace(go.Scatter(
-                    x=rec["seq"], y=rec[name], mode="markers", name=t("lk_recovered"),
+                    x=rpx, y=rec[name], mode="markers", name=t("lk_recovered"),
                     marker={"color": "white", "size": 8, "symbol": "diamond",
-                            "line": {"width": 1.6, "color": PLOT["interp"]}},
-                    hovertemplate="seq %{x} · interp %{y:.2f}" + spec.unit + "<extra></extra>",
+                            "line": {"width": 1.5, "color": PLOT["interp"]}},
+                    hovertemplate="%{x|%H:%M:%S} · interp %{y:.2f} " + spec.unit + "<extra></extra>",
                 ))
-        z_an = proc_df[proc_df[f"{name}_anom"] == True]   # noqa: E712
-        if not z_an.empty:
+
+        # hard threshold breaches — prominent red X
+        hard_an = proc_df[proc_df[f"{name}_hard_anom"] == True]   # noqa: E712
+        if not hard_an.empty:
+            hpx = _to_time_axis(hard_an)
             fig.add_trace(go.Scatter(
-                x=z_an["seq"], y=z_an[name], mode="markers", name=t("lk_zscore"),
+                x=hpx, y=hard_an[name], mode="markers", name=t("lk_zscore"),
                 marker={"color": C_CRIT, "size": 11, "symbol": "x",
                         "line": {"width": 2.2, "color": C_CRIT}},
-                hovertemplate="seq %{x} · ANOMALY %{y:.2f}" + spec.unit + "<extra></extra>",
+                hovertemplate="%{x|%H:%M:%S} · BREACH %{y:.2f} " + spec.unit + "<extra></extra>",
             ))
+        # z-score only (no hard breach) — small subtle dot
+        zscore_only = proc_df[proc_df[f"{name}_z_anom"] & ~proc_df[f"{name}_hard_anom"]]
+        if not zscore_only.empty:
+            zpx = _to_time_axis(zscore_only)
+            fig.add_trace(go.Scatter(
+                x=zpx, y=zscore_only[name], mode="markers", name="Z-score",
+                marker={"color": C_WARN, "size": 6, "symbol": "circle",
+                        "opacity": 0.7, "line": {"width": 1, "color": C_WARN}},
+                hovertemplate="%{x|%H:%M:%S} · z-anom %{y:.2f} " + spec.unit + "<extra></extra>",
+            ))
+
+        # IsolationForest markers
         if_an = proc_df[proc_df["iforest_anom"] == True]  # noqa: E712
         if not if_an.empty:
+            ipx = _to_time_axis(if_an)
             fig.add_trace(go.Scatter(
-                x=if_an["seq"], y=if_an[name], mode="markers", name=t("lk_iforest"),
-                marker={"color": C_ACCENT, "size": 12, "symbol": "circle-open",
-                        "line": {"width": 2.2}},
-                hovertemplate="seq %{x} · IForest %{y:.2f}" + spec.unit + "<extra></extra>",
+                x=ipx, y=if_an[name], mode="markers", name=t("lk_iforest"),
+                marker={"color": C_ACCENT, "size": 11, "symbol": "circle-open",
+                        "line": {"width": 2}},
+                hovertemplate="%{x|%H:%M:%S} · IForest %{y:.2f} " + spec.unit + "<extra></extra>",
             ))
+
+        # live value dot + label
         last = proc_df.iloc[-1]
+        last_x = px.iloc[-1]
         last_anom = bool(last.get(f"{name}_anom") or last.get("iforest_anom"))
         dot_color = C_CRIT if last_anom else C_OK
         fig.add_trace(go.Scatter(
-            x=[last["seq"]], y=[last[name]], mode="markers",
-            marker={"color": dot_color, "size": 11, "line": {"width": 2, "color": "white"}},
+            x=[last_x], y=[last[name]], mode="markers",
+            marker={"color": dot_color, "size": 10, "line": {"width": 2, "color": "white"}},
             showlegend=False, hoverinfo="skip",
         ))
         fig.add_annotation(
-            x=last["seq"], y=last[name], text=f"<b>{last[name]:.1f}</b>",
-            showarrow=False, xanchor="left", xshift=10,
+            x=last_x, y=last[name], text=f"<b>{last[name]:.1f}</b>",
+            showarrow=False, xanchor="left", xshift=12,
             font={"size": 11, "color": dot_color}, bgcolor="white",
-            bordercolor=dot_color, borderwidth=1, borderpad=2,
+            bordercolor=dot_color, borderwidth=1, borderpad=3,
         )
 
     fig.update_layout(
-        title={"text": f"<b>{name.title()}</b> <span style='color:{C_MUTED};font-weight:400;'>· {spec.unit}</span>",
-               "font": {"size": 14, "color": C_TEXT}, "x": 0.01, "y": 0.96},
+        title={"text": f"<b>{name.title()}</b>"
+                       f"<span style='color:{C_MUTED};font-weight:400;font-size:13px;'>"
+                       f"  {spec.unit}</span>",
+               "font": {"size": 15, "color": C_TEXT}, "x": 0.01, "y": 0.97},
         hovermode="x unified",
         hoverlabel={"bgcolor": "white", "bordercolor": C_BORDER, "font": {"size": 11}},
     )
     fig.update_yaxes(title_text="", range=[ymin, ymax])
-    fig.update_xaxes(title_text="sequence")
-    _style_axes(fig, height=320)
-    fig.update_layout(margin={"l": 54, "r": 46, "t": 46, "b": 38})
+    fig.update_xaxes(title_text="", tickformat="%H:%M:%S",
+                     tickangle=-30, nticks=8)
+    _style_axes(fig, height=380)
+    fig.update_layout(margin={"l": 60, "r": 32, "t": 52, "b": 52})
     return fig
 
 
@@ -1087,7 +1158,7 @@ def tab_telemetry(zones_seen: list[str]) -> None:
         show_raw = st.toggle(t("tel_show_raw"), value=True, key="tel_show_raw",
                              help=t("tel_show_raw_help"))
     raw = _get("/raw", zone=zone, last_n=200)
-    proc = _get("/processed", zone=zone, last_n=200)
+    proc = _get_processed(zone=zone, last_n=200)
 
     raw_df = pd.DataFrame(raw.get("records", []))
     proc_df = pd.DataFrame(proc.get("records", []))
@@ -1128,15 +1199,16 @@ def tab_telemetry(zones_seen: list[str]) -> None:
 
     per_row = st.radio(t("charts_per_row"), [1, 2], index=1, horizontal=True,
                        key="tel_per_row", help=t("charts_per_row_help"))
-    st.markdown("<div style='height:6px'></div>", unsafe_allow_html=True)
+    st.markdown("<div style='height:10px'></div>", unsafe_allow_html=True)
 
-    height = 360 if per_row == 1 else 320
+    height = 440 if per_row == 1 else 380
     if per_row == 1:
         for name in SENSOR_NAMES:
             fig = _sensor_chart(name, raw_df, proc_df, show_raw=show_raw)
             fig.update_layout(showlegend=False, height=height)
             st.plotly_chart(fig, use_container_width=True, key=f"tel_{zone}_{name}",
                             config={"displayModeBar": False})
+            st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
     else:
         for i in range(0, len(SENSOR_NAMES), 2):
             cols = st.columns(2, gap="large")
@@ -1150,6 +1222,7 @@ def tab_telemetry(zones_seen: list[str]) -> None:
                     st.plotly_chart(fig, use_container_width=True,
                                     key=f"tel_{zone}_{name}",
                                     config={"displayModeBar": False})
+            st.markdown("<div style='height:12px'></div>", unsafe_allow_html=True)
 
 
 # ─────────────────────────────────────────────────── tab: Pipeline
@@ -1410,7 +1483,7 @@ def tab_scenario_lab(scenarios_resp: dict, zones_seen: list[str]) -> None:
                     if res.get("ok"):
                         st.session_state["lab_last_inject"] = {
                             "zone": zone, "seq": res.get("seq")}
-                        st.rerun()
+                        # No explicit rerun — button click already triggers one.
 
     st.markdown("<br>", unsafe_allow_html=True)
     st.markdown(
@@ -1472,18 +1545,17 @@ def tab_scenario_lab(scenarios_resp: dict, zones_seen: list[str]) -> None:
             "label_as_anomaly": bool(label)})
         if res.get("ok"):
             st.session_state["lab_last_inject"] = {"zone": zone, "seq": res.get("seq")}
-            st.rerun()
+            # No explicit rerun — button click already triggers one.
 
     st.markdown("<br>", unsafe_allow_html=True)
     st.markdown(
         f"<div style='font-weight:700; color:{C_TEXT}; margin:4px 0 10px 0; font-size:0.92rem;'>"
         f"3 · {t('recent_injections')}</div>", unsafe_allow_html=True)
-    seen = (zones_seen or zones_for_inject)
+    # Query specifically for manual-source records across all zones.
+    # Using source= filter avoids relying on last_n to include sparse injections.
     rows2: list[dict] = []
-    for z in seen:
-        for r in _get("/raw", zone=z, last_n=200).get("records", []):
-            if r.get("source") == "manual":
-                rows2.append(r)
+    for z in (zones_seen or zones_for_inject):
+        rows2.extend(_get("/raw", zone=z, source="manual", last_n=50).get("records", []))
     if not rows2:
         st.caption(t("no_injections"))
         return
@@ -1568,10 +1640,11 @@ def tab_metrics(zones_seen: list[str]) -> None:
         fig.update_traces(textposition="outside", texttemplate="%{text:.2f}",
                           marker={"line": {"width": 0}},
                           textfont={"color": C_TEXT, "size": 10}, cliponaxis=False)
-        _style_axes(fig, height=360)
+        _style_axes(fig, height=400)
         fig.update_layout(
             legend={"orientation": "h", "y": 1.12, "x": 0, "title": "", "font": {"size": 11}},
-            bargap=0.28, bargroupgap=0.08)
+            bargap=0.32, bargroupgap=0.10,
+            margin={"l": 60, "r": 28, "t": 56, "b": 48})
         fig.update_xaxes(title_text="")
         fig.update_yaxes(title_text="score")
         st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
@@ -1675,7 +1748,7 @@ def tab_building(zones_seen: list[str]) -> None:
     # gather each zone's live state once
     zdata: dict[str, dict] = {}
     for z in order:
-        proc = _get("/processed", zone=z, last_n=120).get("records", [])
+        proc = _get_processed(zone=z, last_n=120).get("records", [])
         dec = _get("/decisions", zone=z, last_n=1).get("records", [])
         sev = dec[0]["severity"] if dec else "Normal"
         diag = dec[0].get("diagnosis", "") if dec else ""
@@ -1811,17 +1884,19 @@ def tab_building(zones_seen: list[str]) -> None:
             st.session_state["bld_inspect"] = None
         else:
             raw = _get("/raw", zone=insp, last_n=200)
-            proc = _get("/processed", zone=insp, last_n=200)
+            proc = _get_processed(zone=insp, last_n=200)
             raw_df = pd.DataFrame(raw.get("records", []))
             proc_df = pd.DataFrame(proc.get("records", []))
             ccs = st.columns(2, gap="large")
             for i, name in enumerate(SENSOR_NAMES):
                 with ccs[i % 2]:
                     fig = _sensor_chart(name, raw_df, proc_df, show_raw=False)
-                    fig.update_layout(showlegend=False, height=300)
+                    fig.update_layout(showlegend=False, height=340)
                     st.plotly_chart(fig, use_container_width=True,
                                     key=f"bldins_{insp}_{name}",
                                     config={"displayModeBar": False})
+                if i % 2 == 1:
+                    st.markdown("<div style='height:6px'></div>", unsafe_allow_html=True)
 
     # ── live demo controls: inject a fault and watch the floor react
     st.markdown("<br>", unsafe_allow_html=True)
@@ -1849,25 +1924,76 @@ def tab_building(zones_seen: list[str]) -> None:
 # ─────────────────────────────────────────────────────────────── main
 def main() -> None:
     settings = _sidebar()
+    run_every = float(settings["refresh"]) if settings["auto"] else None
 
-    stats = _get("/stats") or {}
-    decisions = (_get("/decisions", last_n=200) or {}).get("records", []) or []
-    scenarios_resp = _get("/scenarios") or {}
-    zones_seen = (_get("/zones") or {}).get("seen", []) or []
+    # Header is its own fragment — updates independently from tab content.
+    @st.fragment(run_every=run_every)
+    def _header_frag() -> None:
+        stats = _get("/stats") or {}
+        _app_bar(stats)
 
-    _app_bar(stats)
+    _header_frag()
 
+    # Tabs are created once outside any fragment so the tab-bar itself
+    # is never re-rendered on fragment reruns.
     tabs = st.tabs([
         t("tab_building"), t("tab_operations"), t("tab_telemetry"),
         t("tab_pipeline"), t("tab_alerts"), t("tab_scenario"), t("tab_metrics"),
     ])
-    with tabs[0]: tab_building(zones_seen or ZONE_NAMES)
-    with tabs[1]: tab_operations(stats, decisions)
-    with tabs[2]: tab_telemetry(zones_seen or ZONE_NAMES)
-    with tabs[3]: tab_pipeline(stats, decisions)
-    with tabs[4]: tab_alerts(decisions)
-    with tabs[5]: tab_scenario_lab(scenarios_resp, zones_seen)
-    with tabs[6]: tab_metrics(zones_seen or ZONE_NAMES)
+
+    # Each tab is its own fragment.  A button click or auto-refresh only
+    # reruns the ONE tab the user is interacting with.
+    with tabs[0]:
+        @st.fragment(run_every=run_every)
+        def _tab0():
+            zones_seen = (_get("/zones") or {}).get("seen", []) or []
+            tab_building(zones_seen or ZONE_NAMES)
+        _tab0()
+
+    with tabs[1]:
+        @st.fragment(run_every=run_every)
+        def _tab1():
+            stats = _get("/stats") or {}
+            decisions = (_get("/decisions", last_n=200) or {}).get("records", []) or []
+            tab_operations(stats, decisions)
+        _tab1()
+
+    with tabs[2]:
+        @st.fragment(run_every=run_every)
+        def _tab2():
+            zones_seen = (_get("/zones") or {}).get("seen", []) or []
+            tab_telemetry(zones_seen or ZONE_NAMES)
+        _tab2()
+
+    with tabs[3]:
+        @st.fragment(run_every=run_every)
+        def _tab3():
+            stats = _get("/stats") or {}
+            decisions = (_get("/decisions", last_n=200) or {}).get("records", []) or []
+            tab_pipeline(stats, decisions)
+        _tab3()
+
+    with tabs[4]:
+        @st.fragment(run_every=run_every)
+        def _tab4():
+            decisions = (_get("/decisions", last_n=200) or {}).get("records", []) or []
+            tab_alerts(decisions)
+        _tab4()
+
+    with tabs[5]:
+        @st.fragment(run_every=run_every)
+        def _tab5():
+            scenarios_resp = _get("/scenarios") or {}
+            zones_seen = (_get("/zones") or {}).get("seen", []) or []
+            tab_scenario_lab(scenarios_resp, zones_seen)
+        _tab5()
+
+    with tabs[6]:
+        @st.fragment(run_every=run_every)
+        def _tab6():
+            zones_seen = (_get("/zones") or {}).get("seen", []) or []
+            tab_metrics(zones_seen or ZONE_NAMES)
+        _tab6()
 
     st.markdown(
         f"<div style='margin-top:20px; padding-top:14px; border-top:1px solid {C_BORDER}; "
@@ -1877,10 +2003,6 @@ def main() -> None:
         f"</div>",
         unsafe_allow_html=True,
     )
-
-    if settings["auto"]:
-        time.sleep(settings["refresh"])
-        st.rerun()
 
 
 if __name__ == "__main__":
