@@ -16,7 +16,7 @@ multi-tab Streamlit operations console.
 
 ## 🎥  Demo Video
 
-**Watch (unlisted): https://www.youtube.com/watch?v=RMszTL3nexo**
+**Watch (unlisted): https://youtu.be/Qljy0q05-nU**
 
 ---
 
