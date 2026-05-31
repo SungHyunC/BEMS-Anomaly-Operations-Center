@@ -40,7 +40,7 @@ multi-tab Streamlit operations console.
 │       └── store.py           SQLite (WAL) persistence layer
 │
 ├── dashboard/                 web GUI code
-│   └── app.py                 Stage 6  ▸ 6-tab Streamlit + Plotly console
+│   └── app.py                 Stage 6  ▸ 7-tab Streamlit + Plotly console
 │
 ├── data/                      sample synthetic data
 │   ├── generate_samples.py    regenerator script
@@ -54,11 +54,7 @@ multi-tab Streamlit operations console.
 ├── requirements.txt
 ├── run_all.sh                 one-shot launcher for all stages
 ├── README.md                  this file
-├── TROUBLESHOOTING.md         major bugs hit during development + fixes
-├── ENGLISH_SCRIPT.md          teleprompter script for the recorded demo
-├── DEMO_SCRIPT.md             timed presentation outline
-├── RECORDING_GUIDE.md         video recording how-to
-└── BEMS_Presentation.pptx     14-slide deck (regenerable via build_ppt.js)
+└── TROUBLESHOOTING.md         major bugs hit during development + fixes
 ```
 
 ---
@@ -82,10 +78,10 @@ second — the dashboard never has to poll for new alerts.
 |---|-------|--------|----------------|
 | ① | Generator      | `src/agents/generator.py`     | 3 zones × 4 sensors, daily-cycle baseline + Gaussian noise, ground-truth `is_anomaly` and `scenario` labels |
 | ② | Transmitter    | `src/agents/transmitter.py`   | Forwards each sample twice — clean to `/truth` (eval), degraded to `/ingest` |
-| ③ | Collector      | `src/agents/collector.py`     | FastAPI; SQLite (WAL) persistence; background decision worker; 11 REST endpoints |
+| ③ | Collector      | `src/agents/collector.py`     | FastAPI; SQLite (WAL) persistence; background decision worker; 12 REST endpoints |
 | ④ | ML Processor   | `src/agents/ml_processor.py`  | Per-zone reindex, linear interpolation, 3 detectors in parallel |
 | ⑤ | Decision       | `src/agents/decision.py`      | Severity classification + nine-rule explainable root-cause engine |
-| ⑥ | Dashboard      | `dashboard/app.py`            | Six tabs — Operations, Telemetry, Pipeline, Alerts, Scenario Lab, Quality Metrics |
+| ⑥ | Dashboard      | `dashboard/app.py`            | Seven tabs — Building, Operations, Telemetry, Pipeline, Alerts, Scenario Lab, Quality Metrics |
 
 ### Sensor specs
 
@@ -97,7 +93,7 @@ second — the dashboard never has to poll for new alerts.
 | CO₂               | 400 – 800 ppm  | > 1200 ppm |
 
 A reading is flagged if (a) it breaches a hard physical threshold,
-(b) its **robust Z-score** (MAD-based, \|z\| > 2.5) exceeds the limit,
+(b) its **robust Z-score** (MAD-based, \|z\| > 3.2) exceeds the limit,
 or (c) **IsolationForest** marks it as a multivariate outlier.
 The Decision Agent escalates to *Critical* on a hard breach or
 \|z\| > 4; soft-only flags become *Warning*.
@@ -201,6 +197,3 @@ dependency**. Tests via pytest.
 - `TROUBLESHOOTING.md` — every real bug I hit (RLock deadlock, the
   `0 or -1` integer trap, masking effect on the Z-score detector …) and
   how I fixed it
-- `ENGLISH_SCRIPT.md` — full English script for the recorded demo
-- `DEMO_SCRIPT.md` — timed presentation outline (8 min)
-- `RECORDING_GUIDE.md` — Mac recording recipe + YouTube Unlisted upload steps
