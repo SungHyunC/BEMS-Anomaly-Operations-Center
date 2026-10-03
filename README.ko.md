@@ -4,22 +4,19 @@
 
 > ICT Module 4 — Intermediate Project
 > **스마트 빌딩 에너지 이상 탐지 및 대응 시스템**
-> 김성현 · 2021271250 · 개인 프로젝트
+> 김성현 · 개인 프로젝트
 
 다중 zone의 건물 에너지 관리 시스템(BEMS) 텔레메트리를 시뮬레이션하고,
-실제 무선 네트워크의 열화를 의도적으로 주입한 뒤, 고전적 머신러닝으로
-손실 데이터를 복구하고, 결정론적 룰 엔진으로 심각도 분류와 근본 원인을
-진단한 다음, 6-탭 Streamlit 운영 콘솔로 모든 것을 한눈에 보여주는
+무선 네트워크의 지연·손실·노이즈를 시뮬레이션한 뒤, 선형 보간으로
+결측값을 추정하고 머신러닝으로 이상을 탐지하며, 결정론적 룰 엔진으로 심각도 분류와 근본 원인을
+진단한 다음, 7-탭 Streamlit 운영 콘솔로 모든 것을 한눈에 보여주는
 **6단계 에이전트 파이프라인**입니다.
 
 ---
 
 ## 🎥  발표 영상
 
-**Watch (Unlisted): _<녹화 후 여기에 링크 입력>_**
-
-> 제출 전에 위 placeholder를 YouTube **Unlisted** 링크
-> (또는 Google Drive **View-Only** 링크)로 교체하세요.
+**[발표 영상 보기](https://youtu.be/Qljy0q05-nU)**
 
 ---
 
@@ -40,7 +37,7 @@
 │       └── store.py           SQLite (WAL) 영속 계층
 │
 ├── dashboard/                 웹 GUI 코드
-│   └── app.py                 Stage 6  ▸ 6-탭 Streamlit + Plotly 콘솔
+│   └── app.py                 Stage 6  ▸ 7-탭 Streamlit + Plotly 콘솔
 │
 ├── data/                      샘플 합성 데이터
 │   ├── generate_samples.py    재생성 스크립트
@@ -55,11 +52,7 @@
 ├── run_all.sh                 전체 단계 원클릭 기동 스크립트
 ├── README.md                  English version
 ├── README.ko.md               (이 문서)
-├── TROUBLESHOOTING.md         개발 중 마주친 주요 버그와 해결법
-├── ENGLISH_SCRIPT.md          녹화용 영어 텔레프롬프터 대본
-├── DEMO_SCRIPT.md             발표 시간표
-├── RECORDING_GUIDE.md         영상 녹화·업로드 가이드
-└── BEMS_Presentation.pptx     14-슬라이드 발표 자료 (build_ppt.js로 재생성)
+└── TROUBLESHOOTING.md         개발 중 마주친 주요 버그와 해결법
 ```
 
 ---
@@ -72,21 +65,25 @@
  ground-truth     EM 노이즈              SQLite + 워커      Z-score + IForest      근본 원인 추정    콘솔
 ```
 
-모든 단계는 **독립된 프로세스**이며 REST API로만 통신합니다.
-어느 에이전트 하나를 다른 머신으로 옮기거나 교체해도 나머지에 영향이
-없습니다. Collector는 **백그라운드 워커**를 실행해 1초마다 결정을
-push합니다 — 대시보드는 알림을 폴링할 필요가 없습니다.
+6개의 논리 단계는 **3개의 프로세스**로 실행됩니다. Transmitter가 Generator를
+호출하고, Collector의 백그라운드 워커가 ML Processor와 Decision을 실행하며,
+Dashboard는 별도 프로세스에서 REST API를 조회합니다. 결정 생성은 화면 갱신과
+독립적으로 수행되며, 대시보드는 선택한 주기로 REST API를 다시 조회합니다.
+
+기본 센서 전송은 REST입니다. `src/config.py`의 `PipelineConfig.transport`를
+`"udp"`로 설정하면 JSON UDP 전송을 사용할 수 있습니다. 이것은 BACnet
+프로토콜 구현이 아니며, 관리 API와 평가용 원본 전송은 계속 REST를 사용합니다.
 
 ### 6개 에이전트
 
 | # | 단계 | 모듈 | 역할 |
 |---|------|------|------|
 | ① | Generator      | `src/agents/generator.py`     | 3존 × 4센서, 일일 점유 사이클 + Gaussian 노이즈, ground-truth 라벨 (`is_anomaly`, `scenario`) 부착 |
-| ② | Transmitter    | `src/agents/transmitter.py`   | 매 샘플을 두 번 전송 — `/truth`로 깨끗한 원본 (평가용), `/ingest`로 열화된 사본 |
-| ③ | Collector      | `src/agents/collector.py`     | FastAPI · SQLite (WAL) 영속화 · 백그라운드 결정 워커 · 11개 REST 엔드포인트 |
-| ④ | ML Processor   | `src/agents/ml_processor.py`  | 존별 reindex · 선형 보간 · 3개 detector 병렬 실행 |
+| ② | Transmitter    | `src/agents/transmitter.py`   | `/truth`로 원본 전송; 손실되지 않은 열화 사본을 REST 또는 UDP로 전송 |
+| ③ | Collector      | `src/agents/collector.py`     | FastAPI · SQLite (WAL) 영속화 · 백그라운드 결정 워커 · 12개 REST 엔드포인트 |
+| ④ | ML Processor   | `src/agents/ml_processor.py`  | 존별 reindex · 선형 보간 · 3개 탐지 신호 결합 |
 | ⑤ | Decision       | `src/agents/decision.py`      | 심각도 분류 + 9-룰 설명 가능한 근본 원인 엔진 |
-| ⑥ | Dashboard      | `dashboard/app.py`            | 6-탭 콘솔 — Operations / Telemetry / Pipeline / Alerts / Scenario Lab / Quality Metrics |
+| ⑥ | Dashboard      | `dashboard/app.py`            | 7-탭 콘솔 — Building / Operations / Telemetry / Pipeline / Alerts / Scenario Lab / Quality Metrics |
 
 ### 센서 사양
 
@@ -98,7 +95,7 @@ push합니다 — 대시보드는 알림을 폴링할 필요가 없습니다.
 | CO₂              | 400 – 800 ppm  | > 1200 ppm |
 
 판정 조건 — (a) 하드 물리 임계 위반, (b) **robust Z-score** (MAD 기반,
-\|z\| > 2.5) 초과, (c) **IsolationForest**가 다변량 이상치로 표시
+\|z\| > 3.2) 초과, (c) **IsolationForest**가 다변량 이상치로 표시
 — 셋 중 하나라도 만족하면 이상치로 분류됩니다. Decision Agent는
 하드 임계 위반 또는 \|z\| > 4면 *Critical*, 그 외 발화는 *Warning*으로
 승급시킵니다.
@@ -128,19 +125,23 @@ push합니다 — 대시보드는 알림을 폴링할 필요가 없습니다.
 
 ```bash
 python3.11 -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
+python -m pip install -r requirements.txt 'streamlit>=1.37.0'
 ./run_all.sh
 ```
 
 * 대시보드: <http://localhost:8501>
 * Collector API 문서: <http://127.0.0.1:8000/docs>
 
+`st.fragment` 사용을 위해 Streamlit 1.37 이상이 필요합니다.
+
 로그는 `./logs/`에 쌓입니다. Ctrl-C로 모든 단계가 정지됩니다.
 
 ## 단계별 개별 실행
 
+각 명령은 가상환경을 활성화한 별도 터미널에서 실행합니다.
+
 ```bash
-export PYTHONPATH=$PWD
+export PYTHONPATH="$PWD"
 python -m src.agents.collector      # Stage 3 + 백그라운드 Stage 4 + 5
 python -m src.agents.transmitter    # Stage 1 + 2
 streamlit run dashboard/app.py      # Stage 6
@@ -187,7 +188,7 @@ source .venv/bin/activate && python -m pytest tests/ -v
 
 24개 케이스 — SQLite 저장소 + RLock 데드락 회귀 테스트, 존별 보간,
 Z-score / hard-threshold / IsolationForest detector, severity 분류,
-모든 root-cause 룰, 시나리오 라이브러리, 종단 evaluator.
+주요 root-cause 룰, 시나리오 라이브러리, 종단 evaluator.
 
 ---
 
@@ -201,6 +202,9 @@ Streamlit + Plotly. 결정 로직은 **순수 룰 엔진** — 외부 LLM 의존
 
 - `TROUBLESHOOTING.md` — 개발 중 마주친 실제 버그 (RLock 데드락,
   `0 or -1` 정수 함정, Z-score masking effect 등) 와 해결 방법
-- `ENGLISH_SCRIPT.md` — 녹화용 영어 텔레프롬프터 대본
-- `DEMO_SCRIPT.md` — 시간 분배된 발표 개요 (8분)
-- `RECORDING_GUIDE.md` — Mac 녹화 + YouTube Unlisted 업로드 절차
+
+## 한계
+
+합성 데이터로 구성한 로컬 시뮬레이션입니다. 실제 건물 센서 연동이나 운영 환경 성능을
+검증하지 않았으며, 규칙 기반 진단은 확정된 원인이 아닙니다. API에는 인증 계층이 없고,
+센서 임계값과 권고 조치는 시연용입니다. 현재 실행 구조와 설정은 [English README](README.md)를 참고하세요.
